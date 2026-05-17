@@ -18,12 +18,12 @@ const Navbar = () => {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const menuRef = useRef(null);
+  const wrapperRef = useRef(null);
 
-  /* Close on outside click */
+  /* Close on outside click — ref wraps BOTH nav + drawer */
   useEffect(() => {
     const handler = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target))
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target))
         setMenuOpen(false);
     };
     document.addEventListener("mousedown", handler);
@@ -379,7 +379,8 @@ const Navbar = () => {
         }
       `}</style>
 
-      <nav className={`cc-nav${scrolled ? " scrolled" : ""}`} ref={menuRef}>
+      <div ref={wrapperRef}>
+      <nav className={`cc-nav${scrolled ? " scrolled" : ""}`}>
         {/* Logo */}
         <NavLink to="/" className="cc-logo" onClick={() => setMenuOpen(false)}>
           <div className="cc-logo-icon">
@@ -496,6 +497,7 @@ const Navbar = () => {
             </button>
           )}
         </div>
+      </div>
       </div>
     </>
   );
