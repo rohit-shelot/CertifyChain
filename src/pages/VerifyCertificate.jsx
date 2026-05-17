@@ -44,7 +44,7 @@ const VerifyCertificate = () => {
     <div className="max-w-2xl mx-auto px-6 py-10 page-enter">
       <div className="mb-8">
         <h2 className="text-2xl font-bold tracking-tight mb-1.5">🔍 Verify Certificate</h2>
-        <p className="text-slate-500 text-sm">Check the authenticity of any certificate issued on CertifyChain</p>
+        <p className="text-slate-500 text-sm">Check the authenticity of any certificate issued on ValidCertiChain</p>
       </div>
 
       <Card className="mb-4">

@@ -35,7 +35,7 @@ const Navbar = () => {
               <polyline points="2 12 12 17 22 12" />
             </svg>
           </div>
-          CertifyChain
+          ValidCertiChain
         </NavLink>
 
         <div className="flex gap-1">

@@ -64,7 +64,7 @@ const Home = () => {
 
 
       <div className="mb-10">
-        <h2 className="text-2xl font-bold tracking-tight mb-1.5">Why CertifyChain?</h2>
+        <h2 className="text-2xl font-bold tracking-tight mb-1.5">Why ValidCertiChain?</h2>
         <p className="text-slate-500 text-sm mb-6">Built on immutable blockchain technology</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {features.map((f) => (

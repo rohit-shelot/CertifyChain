@@ -1,9 +1,9 @@
 ## 📖 Overview
 
 
-**CertifyChain** is a production-grade Web3 decentralized application (dApp) designed to combat resume fraud and secure professional credentials. 
+**ValidCertiChain** is a production-grade Web3 decentralized application (dApp) designed to combat resume fraud and secure professional credentials. 
 
-It empowers authorized educational institutions and organizations to permanently anchor academic certificates to the **Ethereum blockchain**. By combining mathematically unbreakable cryptographic hashes with decentralized **IPFS** document storage, CertifyChain guarantees that issued certificates are immutable, tamper-proof, and instantly verifiable by anyone in the world.
+It empowers authorized educational institutions and organizations to permanently anchor academic certificates to the **Ethereum blockchain**. By combining mathematically unbreakable cryptographic hashes with decentralized **IPFS** document storage, ValidCertiChain guarantees that issued certificates are immutable, tamper-proof, and instantly verifiable by anyone in the world.
 
 ---
 
@@ -41,8 +41,8 @@ Ensure you have the following installed:
 ### 2. Installation
 Clone the repository and install the required NPM packages.
 ```bash
-git clone https://github.com/your-username/certifychain.git
-cd certifychain/Frontend
+git clone https://github.com/your-username/validcertichain.git
+cd validcertichain/Frontend
 npm install
 ```
 
