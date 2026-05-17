@@ -381,7 +381,9 @@ const Manage = () => {
         .mn-td { padding: 12px 14px; border-bottom: 1px solid rgba(42,45,62,0.5); font-size: 13px; }
 
         /* auth banner */
-        .auth-banner { border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; display: flex; align-items: flex-start; gap: 8px; }
+        .auth-banner { border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; display: flex; align-items: flex-start; gap: 8px; min-width: 0; overflow: hidden; box-sizing: border-box; }
+        .auth-banner-text { min-width: 0; flex: 1; line-height: 1.5; word-break: break-word; overflow-wrap: anywhere; }
+        .auth-banner-addr { font-family: 'JetBrains Mono',monospace; font-size: 11px; opacity: 0.85; display: inline-block; word-break: break-all; max-width: 100%; }
 
         /* header row */
         .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 8px; }
@@ -403,13 +405,13 @@ const Manage = () => {
           color: isOwner ? "#a78bfa" : "#22c55e",
         }}>
           <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>{isOwner ? "👑" : "✅"}</span>
-          <span style={{ lineHeight: 1.5 }}>
+          <span className="auth-banner-text">
             <strong>{isOwner ? "Contract Owner." : "Authorized Issuer."}</strong>
             {" "}{isOwner
               ? "Full admin access — you can manage issuers and certificates."
               : "You can issue and revoke certificates. Issuer management is restricted to the contract owner."
             }{" "}
-            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, opacity: 0.85 }}>{shortenAddress(account)}</span>
+            <span className="auth-banner-addr">{shortenAddress(account)}</span>
           </span>
         </div>
 
