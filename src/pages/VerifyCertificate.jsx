@@ -18,6 +18,8 @@ const VerifyCertificate = () => {
   const [loading, setLoading] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
+  
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   useEffect(() => {
     if (hash) handleVerify(hash);
@@ -157,21 +159,40 @@ const VerifyCertificate = () => {
                       Open in new tab ↗
                     </a>
                   </div>
-                  <div className="border border-border rounded-xl overflow-hidden bg-bg-3 h-[500px] w-full shadow-inner relative">
-                    {!iframeLoaded && (
-                      <div className="absolute inset-0 pdf-scanner z-10">
-                        <div className="text-4xl mb-4 opacity-50 grayscale">📄</div>
-                        <span className="pdf-scanner-text">Decrypting PDF...</span>
+                  <div className="border border-border rounded-xl overflow-hidden bg-bg-3 h-[500px] w-full shadow-inner relative flex items-center justify-center">
+                    {isMobile ? (
+                      <div className="text-center p-6 flex flex-col items-center">
+                        <div className="text-5xl mb-4 opacity-80">📱</div>
+                        <h3 className="text-white text-lg font-medium mb-2">Mobile Preview Not Supported</h3>
+                        <p className="text-slate-400 text-sm mb-6 max-w-[250px]">
+                          Most mobile browsers block inline PDF previews. Please open the document directly.
+                        </p>
+                        <a 
+                          href={ipfsUrl(result.ipfsHash)} 
+                          target="_blank" rel="noreferrer" 
+                          className="bg-accent/20 text-accent-light border border-accent/40 px-6 py-2.5 rounded-lg font-semibold hover:bg-accent/30 transition-all"
+                        >
+                          Open PDF Document
+                        </a>
                       </div>
+                    ) : (
+                      <>
+                        {!iframeLoaded && (
+                          <div className="absolute inset-0 pdf-scanner z-10 flex flex-col items-center justify-center bg-bg-3">
+                            <div className="text-4xl mb-4 opacity-50 grayscale">📄</div>
+                            <span className="pdf-scanner-text">Decrypting PDF...</span>
+                          </div>
+                        )}
+                        <iframe
+                          src={`${ipfsUrl(result.ipfsHash)}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
+                          className="border-0 block"
+                          style={{ width: "calc(100% + 24px)", height: "calc(100% + 24px)", pointerEvents: "none", overflow: "hidden" }}
+                          scrolling="no"
+                          onLoad={() => setIframeLoaded(true)}
+                          title="Certificate PDF Preview"
+                        />
+                      </>
                     )}
-                    <iframe
-                      src={`${ipfsUrl(result.ipfsHash)}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
-                      className="border-0 block"
-                      style={{ width: "calc(100% + 24px)", height: "calc(100% + 24px)", pointerEvents: "none", overflow: "hidden" }}
-                      scrolling="no"
-                      onLoad={() => setIframeLoaded(true)}
-                      title="Certificate PDF Preview"
-                    />
                   </div>
                 </div>
               )}
