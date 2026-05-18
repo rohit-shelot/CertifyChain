@@ -3,6 +3,14 @@ FROM node:22-alpine AS build
 
 WORKDIR /app
 
+# Render passes environment variables as ARGs to Docker
+ARG VITE_CONTRACT_ADDRESS
+ARG VITE_PINATA_JWT
+
+# Set them as ENV so Vite can read them during the build step
+ENV VITE_CONTRACT_ADDRESS=$VITE_CONTRACT_ADDRESS
+ENV VITE_PINATA_JWT=$VITE_PINATA_JWT
+
 COPY package*.json ./
 
 RUN npm install
