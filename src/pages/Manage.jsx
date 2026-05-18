@@ -214,16 +214,11 @@ const CertCard = ({ c, revoking, onRevoke, onCopyLink, onVerify }) => {
 const Manage = () => {
   const navigate = useNavigate();
   const { account }                = useWallet();
-  const { addNewIssuer, checkOwner } = useContract();
+  const { addNewIssuer } = useContract();
 
-  const [isOwner,      setIsOwner]      = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [certs,        setCerts]        = useState([]);
   const [loadingCerts, setLoadingCerts] = useState(true);
-  const [issuers,      setIssuers]      = useState([]);
-  const [loadingIssue, setLoadingIssue] = useState(false);
-  const [newAddr,      setNewAddr]      = useState("");
-  const [newLabel,     setNewLabel]     = useState("");
   const [revoking,     setRevoking]     = useState(null);
 
   const getContract = useCallback((signer = false) => {
@@ -237,18 +232,12 @@ const Manage = () => {
 
   /* Auth check */
   useEffect(() => {
-    const check = async () => {
-      if (!account) { setIsOwner(false); setCheckingAuth(false); return; }
-      setCheckingAuth(true);
-      try {
-        const ownerOk = await checkOwner(account);
-        setIsOwner(ownerOk);
-      } catch (_) {
-        setIsOwner(false);
-      } finally { setCheckingAuth(false); }
-    };
-    check();
-  }, [account, checkOwner]);
+    if (!account) {
+      setCheckingAuth(false);
+    } else {
+      setCheckingAuth(false);
+    }
+  }, [account]);
 
   /* Load MY certificates (filter by issuer = account) */
   const loadCerts = useCallback(async () => {
@@ -289,41 +278,11 @@ const Manage = () => {
     } finally { setLoadingCerts(false); }
   }, [account, getContract]);
 
-  /* Load issuers (owner only) */
-  const loadIssuers = useCallback(async () => {
-    if (!account || !isOwner) return;
-    setLoadingIssue(true);
-    try {
-      const contract  = await getContract();
-      const provider  = new ethers.BrowserProvider(window.ethereum);
-      const current   = await provider.getBlockNumber();
-      const fromBlock = Math.max(0, current - 50000);
-      const [addedLogs, removedLogs] = await Promise.all([
-        contract.queryFilter(contract.filters.IssuerAdded(),   fromBlock, "latest"),
-        contract.queryFilter(contract.filters.IssuerRemoved(), fromBlock, "latest"),
-      ]);
-      const removed = new Set(removedLogs.map((l) => l.args.issuer.toLowerCase()));
-      const seen = new Set(); const list = [];
-      for (const log of addedLogs) {
-        const addr = log.args.issuer.toLowerCase();
-        if (!removed.has(addr) && !seen.has(addr)) {
-          seen.add(addr);
-          const isAuth = await contract.authorizedIssuers(log.args.issuer);
-          if (isAuth) list.push({ address: log.args.issuer, addedBy: log.args.addedBy });
-        }
-      }
-      setIssuers(list);
-    } catch (err) {
-      toast.error("Failed to load issuers: " + err.message);
-    } finally { setLoadingIssue(false); }
-  }, [account, isOwner, getContract]);
-
   useEffect(() => {
     if (account && !checkingAuth) {
       loadCerts();
-      if (isOwner) loadIssuers();
     }
-  }, [account, checkingAuth, isOwner, loadCerts, loadIssuers]);
+  }, [account, checkingAuth, loadCerts]);
 
   const handleRevoke = async (hash) => {
     if (!account) { toast.error("Connect wallet first"); return; }
@@ -346,28 +305,6 @@ const Manage = () => {
 
   const handleVerifyRoute = (hash) => {
     navigate(`/verify?hash=${hash}`);
-  };
-
-  const handleAddIssuer = async () => {
-    if (!newAddr) { toast.error("Enter a wallet address"); return; }
-    try {
-      await addNewIssuer(newAddr);
-      setIssuers((p) => [...p, { address: newAddr, addedBy: account, label: newLabel }]);
-      setNewAddr(""); setNewLabel("");
-    } catch (_) {}
-  };
-
-  const handleRemoveIssuer = async (address) => {
-    try {
-      const contract = await getContract(true);
-      const tx = await contract.removeIssuer(address);
-      toast.loading("Waiting for confirmation...", { id: "remove" });
-      await tx.wait();
-      toast.success("Issuer removed", { id: "remove" });
-      setIssuers((p) => p.filter((i) => i.address.toLowerCase() !== address.toLowerCase()));
-    } catch (err) {
-      toast.error(err.reason || err.message, { id: "remove" });
-    }
   };
 
   /* ── No wallet ── */
@@ -423,60 +360,6 @@ const Manage = () => {
           </p>
         </div>
 
-        {/* ── Owner Admin Panel ── */}
-        {isOwner && (
-          <Card style={{ marginBottom: 20, border: "1px solid rgba(167,139,250,0.2)" }}>
-            <div className="section-header">
-              <CardTitle icon="👑">Admin — Noted Issuers</CardTitle>
-              <button className="refresh-btn" onClick={loadIssuers}>↻ Refresh</button>
-            </div>
-
-            {loadingIssue ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0" }}>
-                <Spinner size={16} />
-                <span style={{ color: "var(--muted)", fontSize: 13 }}>Loading…</span>
-              </div>
-            ) : issuers.length === 0 ? (
-              <EmptyState icon="👤" message="No noted issuers found in recent blocks" />
-            ) : (
-              <div>
-                {issuers.map((iss) => (
-                  <div key={iss.address} className="issuer-row">
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 500 }}>{iss.label || "Issuer"}</div>
-                      <div className="issuer-addr">{iss.address}</div>
-                      {iss.addedBy && (
-                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
-                          Added by: {shortenAddress(iss.addedBy)}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      style={{
-                        fontSize: 12, color: "#ef4444", background: "rgba(239,68,68,0.06)",
-                        border: "1px solid rgba(239,68,68,0.25)", padding: "5px 12px",
-                        borderRadius: 6, cursor: "pointer", fontFamily: "inherit",
-                      }}
-                      onClick={() => handleRemoveIssuer(iss.address)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="add-issuer-form">
-              <div className="field-label">
-                <InputField id="nl" placeholder="Label (optional)" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
-              </div>
-              <div className="field-addr">
-                <InputField id="na" placeholder="0x... wallet address" value={newAddr} onChange={(e) => setNewAddr(e.target.value)} />
-              </div>
-              <PrimaryButton onClick={handleAddIssuer}>+ Add Noted Issuer</PrimaryButton>
-            </div>
-          </Card>
-        )}
 
         {/* ── My Certificates ── */}
         <Card>
