@@ -545,7 +545,7 @@ const CertificateDetail = () => {
             {!iframeLoaded && (
               <div className="pdf-scanner" style={{ position: "absolute", inset: 0, zIndex: 10 }}>
                 <div style={{ fontSize: 40, marginBottom: 16, opacity: 0.5, filter: "grayscale(100%)" }}>📄</div>
-                <span className="pdf-scanner-text">Decrypting PDF...</span>
+                <span className="pdf-scanner-text">Loading PDF...</span>
               </div>
             )}
             <iframe

@@ -16,7 +16,6 @@ const VerifyCertificate = () => {
   const [hash, setHash] = useState(searchParams.get("hash") || "");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [iframeLoaded, setIframeLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
   
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -29,7 +28,6 @@ const VerifyCertificate = () => {
     if (!h.trim()) return;
     setLoading(true);
     setResult(null);
-    setIframeLoaded(false);
     try {
       const data = await verify(h.trim());
       if (data.found && data.course && data.course.includes(" | ID: ")) {
@@ -176,22 +174,13 @@ const VerifyCertificate = () => {
                         </a>
                       </div>
                     ) : (
-                      <>
-                        {!iframeLoaded && (
-                          <div className="absolute inset-0 pdf-scanner z-10 flex flex-col items-center justify-center bg-bg-3">
-                            <div className="text-4xl mb-4 opacity-50 grayscale">📄</div>
-                            <span className="pdf-scanner-text">Decrypting PDF...</span>
-                          </div>
-                        )}
-                        <iframe
-                          src={`${ipfsUrl(result.ipfsHash)}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
-                          className="border-0 block"
-                          style={{ width: "calc(100% + 24px)", height: "calc(100% + 24px)", pointerEvents: "none", overflow: "hidden" }}
-                          scrolling="no"
-                          onLoad={() => setIframeLoaded(true)}
-                          title="Certificate PDF Preview"
-                        />
-                      </>
+                      <iframe
+                        src={`${ipfsUrl(result.ipfsHash)}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
+                        className="border-0 block"
+                        style={{ width: "calc(100% + 24px)", height: "calc(100% + 24px)", pointerEvents: "none", overflow: "hidden" }}
+                        scrolling="no"
+                        title="Certificate PDF Preview"
+                      />
                     )}
                   </div>
                 </div>
