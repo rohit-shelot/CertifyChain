@@ -2,19 +2,31 @@ import React, { useState, useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 import { shortenAddress } from "../utils/ethers";
-
-const NAV_LINKS = [
-  { to: "/", label: "Home", icon: "⬡" },
-  { to: "/issue", label: "Issue", icon: "✦" },
-  { to: "/verify", label: "Verify", icon: "◈" },
-  { to: "/manage", label: "Manage", icon: "⊞" },
-  { to: "/audit", label: "Audit Log", icon: "◎" },
-  { to: "/certificates", label: "Certificate", icon: "❋" },
-];
+import { useContract } from "../hooks/useContract";
 
 const Navbar = () => {
-  const { account, accounts, connect, disconnect, isConnecting, setAccount } =
-    useWallet();
+  const { account, accounts, connect, disconnect, isConnecting, setAccount } = useWallet();
+  const { checkOwner } = useContract();
+  const [isOwner, setIsOwner] = useState(false);
+
+  useEffect(() => {
+    const verifyOwner = async () => {
+      if (!account) { setIsOwner(false); return; }
+      try {
+        const ownerStatus = await checkOwner(account);
+        setIsOwner(ownerStatus);
+      } catch (err) { setIsOwner(false); }
+    };
+    verifyOwner();
+  }, [account, checkOwner]);
+
+  const NAV_LINKS = [
+    { to: "/", label: "Home", icon: "⬡" },
+    { to: "/issue", label: "Issue", icon: "✦" },
+    { to: "/verify", label: "Verify", icon: "◈" },
+    { to: "/manage", label: "My Certificates", icon: "📋" },
+    ...(isOwner ? [{ to: "/certificates", label: "Explorer", icon: "❋" }] : []),
+  ];
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);

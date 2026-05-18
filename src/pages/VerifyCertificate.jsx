@@ -8,6 +8,7 @@ import {
 import { useContract } from "../hooks/useContract";
 import { formatTimestamp, shortenAddress } from "../utils/ethers";
 import { ipfsUrl } from "../utils/pinata";
+import toast from "react-hot-toast";
 
 const VerifyCertificate = () => {
   const [searchParams] = useSearchParams();
@@ -16,6 +17,7 @@ const VerifyCertificate = () => {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (hash) handleVerify(hash);
@@ -25,6 +27,7 @@ const VerifyCertificate = () => {
     if (!h.trim()) return;
     setLoading(true);
     setResult(null);
+    setIframeLoaded(false);
     try {
       const data = await verify(h.trim());
       if (data.found && data.course && data.course.includes(" | ID: ")) {
@@ -40,13 +43,26 @@ const VerifyCertificate = () => {
     }
   };
 
+  const verifyUrl = `${window.location.origin}/verify?hash=${hash}`;
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(verifyUrl).then(() => {
+      setCopied(true);
+      toast.success("Verification link copied!");
+      setTimeout(() => setCopied(false), 2500);
+    });
+  };
+
   return (
     <div className="max-w-2xl mx-auto px-6 py-10 page-enter">
       <div className="mb-8">
         <h2 className="text-2xl font-bold tracking-tight mb-1.5">🔍 Verify Certificate</h2>
-        <p className="text-slate-500 text-sm">Check the authenticity of any certificate issued on ValidCertiChain</p>
+        <p className="text-slate-500 text-sm">
+          Check the authenticity of any certificate issued on ValidCertiChain
+        </p>
       </div>
 
+      {/* Input */}
       <Card className="mb-4">
         <CardTitle icon="🔑">Enter Certificate Hash</CardTitle>
         <InputField
@@ -66,6 +82,7 @@ const VerifyCertificate = () => {
         </PrimaryButton>
       </Card>
 
+      {/* Loading */}
       {loading && (
         <Card className="flex items-center justify-center py-10 gap-3">
           <Spinner />
@@ -73,10 +90,12 @@ const VerifyCertificate = () => {
         </Card>
       )}
 
+      {/* Result */}
       {result && !loading && (
         <Card className={`relative overflow-hidden ${result.found && result.isValid ? "border-green-500/30" : "border-red-500/30"}`}>
           <div className={`absolute top-0 left-0 right-0 h-0.5 ${result.found && result.isValid ? "bg-gradient-to-r from-cert-teal to-green-400" : "bg-red-500"}`} />
 
+          {/* Status header */}
           <div className="text-center mb-6 pt-2">
             <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl mx-auto mb-3 border-2
               ${result.found && result.isValid
@@ -105,15 +124,16 @@ const VerifyCertificate = () => {
 
           {result.found && (
             <>
+              {/* Details grid */}
               <div className="grid grid-cols-2 gap-3 mb-5">
                 {[
-                  ["Recipient Name", result.name],
-                  ["Course / Program", result.course],
-                  ["Certificate ID", result.certId || "Not Found"],
-                  ["Issue Date", formatTimestamp(result.issueDate)],
-                  ["Status", null],
-                  ["Issuer Address", shortenAddress(result.issuer)],
-                ].filter(Boolean).map(([label, val]) => (
+                  ["Recipient Name",    result.name],
+                  ["Course / Program",  result.course],
+                  ["Certificate ID",    result.certId || "—"],
+                  ["Issue Date",        formatTimestamp(result.issueDate)],
+                  ["Status",            null],
+                  ["Issuer Address",    shortenAddress(result.issuer)],
+                ].map(([label, val]) => (
                   <div key={label} className="bg-bg-3 rounded-xl p-3">
                     <div className="text-xs text-slate-500 font-semibold uppercase tracking-widest mb-1">{label}</div>
                     {label === "Status"
@@ -124,8 +144,9 @@ const VerifyCertificate = () => {
                 ))}
               </div>
 
+              {/* PDF Preview */}
               {result.ipfsHash && (
-                <div className="mb-4">
+                <div className="mb-5">
                   <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2 flex justify-between items-center">
                     <span>Certificate PDF</span>
                     <a
@@ -155,10 +176,33 @@ const VerifyCertificate = () => {
                 </div>
               )}
 
-              <div className="border-t border-border pt-4 flex flex-col items-center gap-3">
-                <div className="text-xs text-slate-500 font-semibold uppercase tracking-widest">Verification QR</div>
-                <div className="bg-white p-4 rounded-xl">
-                  <QRCode value={`${window.location.origin}/verify?hash=${hash}`} size={120} />
+              {/* QR + Share */}
+              <div className="border-t border-border pt-5">
+                <div className="text-xs text-slate-500 font-semibold uppercase tracking-widest mb-4 text-center">
+                  Share This Certificate
+                </div>
+                <div className="flex flex-col items-center gap-4">
+                  <div className="bg-white p-4 rounded-xl">
+                    <QRCode value={verifyUrl} size={130} />
+                  </div>
+                  {/* Shareable link row */}
+                  <div className="w-full flex items-center gap-2 bg-bg-3 border border-border rounded-xl px-3 py-2">
+                    <span className="text-xs text-slate-400 font-mono flex-1 truncate">{verifyUrl}</span>
+                    <button
+                      id="copy-verify-link-btn"
+                      onClick={copyLink}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all flex-shrink-0 ${
+                        copied
+                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                          : "bg-accent/10 text-accent-light border border-accent/30 hover:bg-accent/20"
+                      }`}
+                    >
+                      {copied ? "✓ Copied!" : "Copy Link"}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-600 text-center">
+                    Anyone with this link can verify the certificate's authenticity instantly.
+                  </p>
                 </div>
               </div>
             </>

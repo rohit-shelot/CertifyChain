@@ -7,7 +7,6 @@ import Home from "./pages/Home";
 import IssueCertificate from "./pages/IssueCertificate";
 import VerifyCertificate from "./pages/VerifyCertificate";
 import Manage from "./pages/Manage";
-import AuditLog from "./pages/AuditLog";
 import Certificates from "./pages/Certificates";
 import CertificateDetail from "./pages/CertificateDetail.jsx";
 
@@ -23,7 +22,6 @@ const App = () => (
           <Route path="/issue" element={<IssueCertificate />} />
           <Route path="/verify" element={<VerifyCertificate />} />
           <Route path="/manage" element={<Manage />} />
-          <Route path="/audit" element={<AuditLog />} />
           <Route path="/certificates" element={<Certificates />} />
           <Route path="/certificates/:hash" element={<CertificateDetail />} />
         </Routes>

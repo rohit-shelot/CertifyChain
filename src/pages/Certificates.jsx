@@ -70,30 +70,30 @@ const styles = {
 const Certificates = () => {
   const navigate = useNavigate();
   const { account } = useWallet();
-  const { checkIssuer } = useContract();
+  const { checkOwner } = useContract();
 
-  const [registered,  setRegistered]  = useState(null);
-  const [checkingReg, setCheckingReg] = useState(true);
+  const [isOwner,  setIsOwner]  = useState(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [certs,       setCerts]       = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState("");
   const [filter,      setFilter]      = useState("all");
 
   useEffect(() => {
-    const checkRegistration = async () => {
-      if (!account) { setRegistered(false); setCheckingReg(false); return; }
-      setCheckingReg(true);
+    const verifyOwner = async () => {
+      if (!account) { setIsOwner(false); setCheckingAuth(false); return; }
+      setCheckingAuth(true);
       try {
-        const ok = await checkIssuer(account);
-        setRegistered(ok);
+        const ok = await checkOwner(account);
+        setIsOwner(ok);
       } catch (_) {
-        setRegistered(false);
+        setIsOwner(false);
       } finally {
-        setCheckingReg(false);
+        setCheckingAuth(false);
       }
     };
-    checkRegistration();
-  }, [account, checkIssuer]);
+    verifyOwner();
+  }, [account, checkOwner]);
 
   // ── Load certs (only when registered) ───────────────────────────────────────
   const getContract = useCallback(() => {
@@ -166,8 +166,8 @@ const Certificates = () => {
   }, [getContract]);
 
   useEffect(() => {
-    if (registered) loadCerts();
-  }, [registered, loadCerts]);
+    if (isOwner) loadCerts();
+  }, [isOwner, loadCerts]);
 
   const filtered = certs.filter((c) => {
     const matchesFilter =
@@ -201,18 +201,18 @@ const Certificates = () => {
     );
   }
 
-  if (checkingReg) {
+  if (checkingAuth) {
     return (
       <div style={styles.page} className="page-enter">
         <Card style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "48px 24px" }}>
           <Spinner />
-          <span style={{ color: "var(--muted)", fontSize: 14 }}>Checking registration status...</span>
+          <span style={{ color: "var(--muted)", fontSize: 14 }}>Checking permissions...</span>
         </Card>
       </div>
     );
   }
 
-  if (!registered) {
+  if (!isOwner) {
     return (
       <div style={styles.page} className="page-enter">
         <Card style={{ textAlign: "center", padding: "48px 24px", border: "1px solid rgba(239,68,68,0.3)" }}>
@@ -224,15 +224,7 @@ const Certificates = () => {
           }}>✗</div>
           <h3 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 8px" }}>Access Denied</h3>
           <p style={{ color: "var(--muted)", fontSize: 14, margin: "0 0 16px" }}>
-            Only registered issuers can view certificates.
-          </p>
-          <p style={{
-            fontFamily: "'JetBrains Mono', monospace", fontSize: 12,
-            background: "var(--bg3)", padding: "8px 16px", borderRadius: 8,
-            display: "inline-block", color: "var(--muted)",
-          }}>{account}</p>
-          <p style={{ color: "var(--muted)", fontSize: 13, margin: "16px 0 0" }}>
-            Contact the platform admin to get your address registered.
+            Only the Smart Contract Owner can access the Explorer.
           </p>
         </Card>
       </div>

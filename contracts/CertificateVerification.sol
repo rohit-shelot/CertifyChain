@@ -21,7 +21,7 @@ contract CertificateVerification {
     /// @dev certHash → Certificate data
     mapping(bytes32 => Certificate) public certificates;
 
-    /// @dev wallet address → authorized issuer
+    /// @dev wallet address → authorized issuer (kept for admin reference only)
     mapping(address => bool) public authorizedIssuers;
 
     /// @notice Emitted when a certificate is issued
@@ -46,7 +46,7 @@ contract CertificateVerification {
     /// @notice Emitted when an issuer is removed
     event IssuerRemoved(address indexed issuer, address indexed removedBy);
 
-    /// @notice Constructor sets deployer as owner and authorized issuer
+    /// @notice Constructor sets deployer as owner
     constructor() {
         owner = msg.sender;
         authorizedIssuers[msg.sender] = true;
@@ -59,22 +59,16 @@ contract CertificateVerification {
         _;
     }
 
-    /// @notice Modifier to restrict access to authorized issuers
-    modifier onlyAuthorized() {
-        require(authorizedIssuers[msg.sender], "Not an authorized issuer");
-        _;
-    }
-
-    /// @notice Add a new authorized issuer (owner only)
+    /// @notice Add a noted issuer address (owner only, informational)
     function addIssuer(address _issuer) external onlyOwner {
         require(_issuer != address(0), "Zero address");
-        require(!authorizedIssuers[_issuer], "Already an issuer");
+        require(!authorizedIssuers[_issuer], "Already noted");
 
         authorizedIssuers[_issuer] = true;
         emit IssuerAdded(_issuer, msg.sender);
     }
 
-    /// @notice Remove an authorized issuer (owner only)
+    /// @notice Remove a noted issuer address (owner only)
     function removeIssuer(address _issuer) external onlyOwner {
         require(_issuer != owner, "Cannot remove the owner");
 
@@ -82,17 +76,17 @@ contract CertificateVerification {
         emit IssuerRemoved(_issuer, msg.sender);
     }
 
-    /// @notice Issue a new certificate
+    /// @notice Issue a new certificate — open to any connected wallet
     /// @param certHash Unique hash of certificate data
-    /// @param name Student name
-    /// @param course Course name
-    /// @param ipfsHash IPFS CID of certificate file
+    /// @param name     Recipient name
+    /// @param course   Course / credential name
+    /// @param ipfsHash IPFS CID of the certificate file
     function issueCertificate(
         bytes32 certHash,
         string calldata name,
         string calldata course,
         string calldata ipfsHash
-    ) external onlyAuthorized {
+    ) external {
         require(certificates[certHash].issueDate == 0, "Certificate already exists");
         require(bytes(name).length > 0, "Name required");
         require(bytes(course).length > 0, "Course required");
@@ -109,10 +103,14 @@ contract CertificateVerification {
         emit CertificateIssued(certHash, name, course, msg.sender, block.timestamp);
     }
 
-    /// @notice Revoke an existing certificate
-    function revokeCertificate(bytes32 certHash) external onlyAuthorized {
+    /// @notice Revoke a certificate — only the original issuer of that certificate can revoke
+    function revokeCertificate(bytes32 certHash) external {
         require(certificates[certHash].issueDate != 0, "Certificate not found");
         require(certificates[certHash].isValid, "Already revoked");
+        require(
+            certificates[certHash].issuer == msg.sender,
+            "Only the original issuer can revoke this certificate"
+        );
 
         certificates[certHash].isValid = false;
 

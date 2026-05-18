@@ -46,17 +46,6 @@ export const useContract = () => {
     try {
       const contract = await getContract();
 
-      const signerAddress = await contract.runner.getAddress();
-      console.log("ISSUE → signer:", signerAddress);
-
-      const isIssuer = await contract.authorizedIssuers(signerAddress);
-      console.log("ISSUE → isIssuer:", isIssuer);
-
-      if (!isIssuer) {
-        toast.error("You are NOT an authorized issuer", { id: toastId });
-        throw new Error("Not an authorized issuer");
-      }
-
       toast.loading("Confirm in MetaMask...", { id: toastId });
 
       const tx = await contract.issueCertificate(
@@ -104,12 +93,17 @@ export const useContract = () => {
         return { found: false };
       }
 
-      toast.success("Verification complete", { id: toastId });
+      if (isValid) {
+        toast.success("Certificate is Valid!", { id: toastId });
+      } else {
+        toast.error("Certificate has been Revoked!", { id: toastId });
+      }
 
       return { found: true, name, course, ipfsHash, issueDate, issuer, isValid };
 
     } catch (err) {
-      toast.error("Verification failed: " + err.message, { id: toastId });
+      console.error("VERIFY ERROR:", err);
+      toast.error("Certificate not found or invalid hash", { id: toastId });
       throw err;
     }
   }, [account]);
@@ -220,7 +214,30 @@ export const useContract = () => {
     }
   }, []);
 
-  return { issue, verify, revoke, addNewIssuer, checkIssuer, checkOwner, checkExists, checkCertIdExists };
+  const getNextCertId = useCallback(async () => {
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+      const filter = contract.filters.CertificateIssued();
+      const events = await contract.queryFilter(filter, 0, 'latest');
+      let maxNum = 0;
+      for (const event of events) {
+        const courseStr = event.args[2] || "";
+        // Match both "CERT-N" at end and mid-string (| ID: CERT-N)
+        const match = courseStr.match(/CERT-(\d+)/);
+        if (match) {
+          const n = parseInt(match[1], 10);
+          if (n > maxNum) maxNum = n;
+        }
+      }
+      return `CERT-${maxNum + 1}`;
+    } catch (err) {
+      console.error("getNextCertId error:", err);
+      return `CERT-1`;
+    }
+  }, []);
+
+  return { issue, verify, revoke, addNewIssuer, checkIssuer, checkOwner, checkExists, checkCertIdExists, getNextCertId };
 };
 
 export default useContract;
