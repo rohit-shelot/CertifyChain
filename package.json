@@ -49,5 +49,13 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rohit-shelot/CertifyChain.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rohit-shelot/CertifyChain/issues"
+  },
+  "homepage": "https://github.com/rohit-shelot/CertifyChain#readme"
 }
