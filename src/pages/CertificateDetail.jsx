@@ -270,8 +270,7 @@ const CertificateDetail = () => {
   const decodedHash = decodeURIComponent(hash);
 
   const getContract = useCallback(() => {
-    if (!window.ethereum) throw new Error("MetaMask not found");
-    const provider = new ethers.BrowserProvider(window.ethereum);
+    const provider = new ethers.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
     return new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
   }, []);
 
@@ -305,7 +304,7 @@ const CertificateDetail = () => {
         setCert(onChain);
 
         if (onChain.txHash) {
-          const provider = new ethers.BrowserProvider(window.ethereum);
+          const provider = new ethers.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
           const [receipt, block] = await Promise.all([
             provider.getTransactionReceipt(onChain.txHash),
             provider.getBlock(onChain.blockNumber),

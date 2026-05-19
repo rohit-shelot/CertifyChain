@@ -21,6 +21,11 @@ export const useContract = () => {
     return new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
   };
 
+  const getReadOnlyContract = () => {
+    const provider = new ethers.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+    return new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+  };
+
   const issue = useCallback(async ({ name, course, institution, grade, certId, file }) => {
     if (!account) throw new Error("Wallet not connected");
 
@@ -77,7 +82,7 @@ export const useContract = () => {
     const toastId = toast.loading("Verifying on blockchain...");
 
     try {
-      const contract = await getContract();
+      const contract = getReadOnlyContract();
 
       const data = await contract.verifyCertificate(certHash);
 
@@ -152,8 +157,7 @@ export const useContract = () => {
 
   const checkIssuer = useCallback(async (address) => {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+      const contract = getReadOnlyContract();
 
       const result = await contract.authorizedIssuers(address);
 
@@ -169,8 +173,7 @@ export const useContract = () => {
 
   const checkOwner = useCallback(async (address) => {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+      const contract = getReadOnlyContract();
 
       const ownerAddr = await contract.owner();
 
@@ -186,8 +189,7 @@ export const useContract = () => {
 
   const checkExists = useCallback(async (certHash) => {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+      const contract = getReadOnlyContract();
       const data = await contract.verifyCertificate(certHash);
       return (data[0] && data[0] !== "");
     } catch (err) {
@@ -197,8 +199,7 @@ export const useContract = () => {
 
   const checkCertIdExists = useCallback(async (certId) => {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+      const contract = getReadOnlyContract();
       const filter = contract.filters.CertificateIssued();
       const events = await contract.queryFilter(filter, 0, 'latest');
       for (let event of events) {
@@ -216,8 +217,7 @@ export const useContract = () => {
 
   const getNextCertId = useCallback(async () => {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+      const contract = getReadOnlyContract();
       const filter = contract.filters.CertificateIssued();
       const events = await contract.queryFilter(filter, 0, 'latest');
       let maxNum = 0;

@@ -64,16 +64,6 @@ const VerifyCertificate = () => {
         </p>
       </div>
 
-      {!account ? (
-        <Card className="text-center py-10">
-          <div className="text-5xl mb-4">🦊</div>
-          <h3 className="text-xl font-bold mb-2">Wallet Connection Required</h3>
-          <p className="text-slate-400 text-sm mb-6 max-w-sm mx-auto">
-            To query the blockchain and verify certificates, you need to connect your Web3 wallet (like MetaMask) using the button in the navigation bar.
-          </p>
-        </Card>
-      ) : (
-        <>
           {/* Input */}
       <Card className="mb-4">
         <CardTitle icon="🔑">Enter Certificate Hash</CardTitle>
@@ -230,8 +220,6 @@ const VerifyCertificate = () => {
             </>
           )}
         </Card>
-      )}
-      </>
       )}
     </div>
   );
