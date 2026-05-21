@@ -469,12 +469,109 @@ const Manage = () => {
                   onRevoke={handleRevoke}
                   onCopyLink={handleCopyLink}
                   onVerify={handleVerifyRoute}
+                  onEdit={handleOpenEdit}
                 />
               ))}
             </div>
           )}
         </Card>
       </div>
+
+      {/* ── Edit Modal ── */}
+      {editingCert && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 1000,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+        }}>
+          <div style={{
+            background: "var(--bg2)", border: "1px solid var(--border)",
+            borderRadius: 16, padding: 28, width: "100%", maxWidth: 480,
+            display: "flex", flexDirection: "column", gap: 16,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>✏️ Edit Certificate</h3>
+              <button
+                onClick={() => setEditingCert(null)}
+                style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 20 }}
+              >✕</button>
+            </div>
+
+            <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>
+              This will update the certificate on-chain. A transaction confirmation via MetaMask is required.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 5 }}>Recipient Name *</label>
+                <input
+                  value={editForm.name}
+                  onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
+                  style={{
+                    width: "100%", padding: "9px 13px", borderRadius: 9, fontSize: 14,
+                    background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
+                    fontFamily: "inherit", boxSizing: "border-box",
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 5 }}>Course / Program *</label>
+                <input
+                  value={editForm.course}
+                  onChange={(e) => setEditForm(f => ({ ...f, course: e.target.value }))}
+                  style={{
+                    width: "100%", padding: "9px 13px", borderRadius: 9, fontSize: 14,
+                    background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
+                    fontFamily: "inherit", boxSizing: "border-box",
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 5 }}>
+                  Replace PDF (optional)
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => setEditFile(e.target.files[0] || null)}
+                  style={{
+                    width: "100%", padding: "8px 12px", borderRadius: 9, fontSize: 13,
+                    background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--muted)",
+                    fontFamily: "inherit", boxSizing: "border-box", cursor: "pointer",
+                  }}
+                />
+                {editFile && (
+                  <div style={{ fontSize: 11, color: "#4af0c4", marginTop: 4 }}>📄 {editFile.name}</div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+              <button
+                onClick={() => setEditingCert(null)}
+                disabled={savingEdit}
+                style={{
+                  fontSize: 13, padding: "8px 18px", borderRadius: 9, cursor: "pointer",
+                  fontFamily: "inherit", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--muted)",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={savingEdit || !editForm.name || !editForm.course}
+                style={{
+                  fontSize: 13, padding: "8px 20px", borderRadius: 9, cursor: savingEdit ? "not-allowed" : "pointer",
+                  fontFamily: "inherit", opacity: savingEdit ? 0.6 : 1,
+                  background: "linear-gradient(135deg,#eab308,#f59e0b)", border: "none", color: "#000", fontWeight: 700,
+                }}
+              >
+                {savingEdit ? "Saving…" : "💾 Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
