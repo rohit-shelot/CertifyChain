@@ -161,3 +161,41 @@ export const formatTimestamp = (ms) => {
     year: "numeric",
   });
 };
+
+/**
+ * queryFilterChunked — splits a large block range into chunks of `chunkSize`
+ * to avoid "out of range result" errors on free RPC endpoints that cap at
+ * 2000 blocks per eth_getLogs call.
+ *
+ * @param {ethers.Contract} contract
+ * @param {ethers.EventFilter} filter
+ * @param {number} fromBlock
+ * @param {number|string} toBlock  — pass a number or "latest"
+ * @param {ethers.Provider} provider — needed when toBlock === "latest"
+ * @param {number} chunkSize — blocks per request (default 2000)
+ */
+export const queryFilterChunked = async (
+  contract,
+  filter,
+  fromBlock,
+  toBlock,
+  provider,
+  chunkSize = 2000
+) => {
+  let endBlock = toBlock;
+  if (toBlock === "latest" || typeof toBlock === "string") {
+    endBlock = await provider.getBlockNumber();
+  }
+
+  const results = [];
+  for (let start = fromBlock; start <= endBlock; start += chunkSize) {
+    const end = Math.min(start + chunkSize - 1, endBlock);
+    try {
+      const logs = await contract.queryFilter(filter, start, end);
+      results.push(...logs);
+    } catch (err) {
+      console.warn(`[queryFilterChunked] chunk ${start}–${end} failed:`, err.message);
+    }
+  }
+  return results;
+};

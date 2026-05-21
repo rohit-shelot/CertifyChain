@@ -6,7 +6,7 @@ import { Card, CardTitle, InputField, PrimaryButton, Badge, Spinner, EmptyState 
 import { useContract } from "../hooks/useContract";
 import { useWallet } from "../context/WalletContext";
 import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
-import { shortenAddress } from "../utils/ethers";
+import { shortenAddress, queryFilterChunked } from "../utils/ethers";
 import toast from "react-hot-toast";
 
 const ABI = [
@@ -74,7 +74,8 @@ const ABI = [
         { "internalType": "string",  "name": "ipfsHash",  "type": "string"  },
         { "internalType": "uint256", "name": "issueDate", "type": "uint256" },
         { "internalType": "address", "name": "issuer",    "type": "address" },
-        { "internalType": "bool",    "name": "isValid",   "type": "bool"    }
+        { "internalType": "bool",    "name": "isValid",   "type": "bool"    },
+        { "internalType": "bool",    "name": "isEdited",  "type": "bool"    }
       ],
       "internalType": "struct CertificateVerification.Certificate",
       "name": "", "type": "tuple"
@@ -88,6 +89,134 @@ const ABI = [
     "stateMutability": "view", "type": "function"
   }
 ];
+
+/* ── IPFS gateways to try in order (X-Frame-Options varies by gateway) ── */
+const IPFS_GATEWAYS = [
+  "https://ipfs.io/ipfs/",
+  "https://cloudflare-ipfs.com/ipfs/",
+  "https://dweb.link/ipfs/",
+  "https://gateway.pinata.cloud/ipfs/",
+];
+
+/* ── CertPreview: tries multiple gateways, shows spinner, graceful fallback ── */
+const CertPreview = ({ ipfsHash, height = 280 }) => {
+  const [gatewayIdx, setGatewayIdx] = useState(0);
+  const [loading, setLoading]       = useState(true);
+  const [allFailed, setAllFailed]   = useState(false);
+
+  // Reset when ipfsHash changes
+  useEffect(() => {
+    setGatewayIdx(0);
+    setLoading(true);
+    setAllFailed(false);
+  }, [ipfsHash]);
+
+  if (!ipfsHash) {
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        height: "100%", minHeight: height, gap: 14,
+        color: "var(--muted)", padding: 32, textAlign: "center",
+      }}>
+        <span style={{ fontSize: 48, opacity: 0.4 }}>📂</span>
+        <div>
+          <p style={{ fontSize: 14, fontWeight: 600, margin: "0 0 6px" }}>No File Attached</p>
+          <p style={{ fontSize: 12, margin: 0, opacity: 0.6 }}>This certificate was issued without an attached PDF document.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (allFailed) {
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        height: "100%", minHeight: height, gap: 16,
+        color: "var(--muted)", padding: 32, textAlign: "center",
+      }}>
+        <span style={{ fontSize: 44, opacity: 0.5 }}>🔒</span>
+        <div>
+          <p style={{ fontSize: 14, fontWeight: 600, margin: "0 0 6px", color: "#f87171" }}>Preview Blocked</p>
+          <p style={{ fontSize: 12, margin: "0 0 16px", opacity: 0.7, lineHeight: 1.6 }}>
+            All IPFS gateways blocked iframe embedding.<br />Open the certificate in a new tab to view it.
+          </p>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 240 }}>
+          {IPFS_GATEWAYS.map((gw, i) => (
+            <a
+              key={i}
+              href={`${gw}${ipfsHash}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                fontSize: 12, padding: "8px 16px", borderRadius: 8,
+                background: "rgba(124,109,250,0.12)", border: "1px solid rgba(124,109,250,0.3)",
+                color: "#a78bfa", textDecoration: "none", display: "block",
+                transition: "background 0.2s",
+              }}
+            >
+              ↗ {gw.replace("https://", "").replace("/ipfs/", "")}
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const currentUrl = `${IPFS_GATEWAYS[gatewayIdx]}${ipfsHash}`;
+
+  const handleError = () => {
+    if (gatewayIdx + 1 < IPFS_GATEWAYS.length) {
+      setGatewayIdx(g => g + 1);
+      setLoading(true);
+    } else {
+      setAllFailed(true);
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%", minHeight: height }}>
+      {loading && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 2,
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center", gap: 12,
+          background: "rgba(0,0,0,0.25)",
+        }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: "50%",
+            border: "3px solid rgba(124,109,250,0.2)",
+            borderTopColor: "#a78bfa",
+            animation: "spin 0.8s linear infinite",
+          }} />
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>
+            Loading from gateway {gatewayIdx + 1}/{IPFS_GATEWAYS.length}…
+          </span>
+        </div>
+      )}
+      <iframe
+        key={currentUrl}
+        src={`${currentUrl}#toolbar=0&navpanes=0&view=Fit`}
+        title="Certificate Preview"
+        onLoad={() => setLoading(false)}
+        onError={handleError}
+        scrolling="no"
+        style={{
+          width: "100%", height: "100%", border: "none",
+          display: "block", minHeight: height,
+          background: "#fff",
+          opacity: loading ? 0 : 1,
+          transition: "opacity 0.3s",
+          overflow: "hidden",
+        }}
+      />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+};
 
 /* ── CertCard ── */
 const CertCard = ({ c, revoking, onRevoke, onCopyLink, onVerify, onEdit }) => {
@@ -274,24 +403,30 @@ const Manage = () => {
       const provider  = new ethers.BrowserProvider(window.ethereum);
       const fromBlock = CONTRACT_DEPLOYMENT_BLOCK;
 
-      /* filter by issuer topic directly */
+      /* Use chunked queries to avoid "out of range" errors on free RPCs */
       const filter = contract.filters.CertificateIssued(null, null, null, account);
-      const logs   = await contract.queryFilter(filter, fromBlock, "latest");
+      const logs   = await queryFilterChunked(contract, filter, fromBlock, "latest", provider);
 
       const parsed = await Promise.all(
         logs.map(async (log) => {
           let isValid = false, isEdited = false, name = log.args.name, course = log.args.course, ipfsHash = "";
+          let rawDate = 0;
           try {
             const cert = await contract.verifyCertificate(log.args.certHash);
             isValid = cert[5];
             isEdited = cert[6];
             name = cert[0] || name; course = cert[1] || course; ipfsHash = cert[2];
+            rawDate = Number(cert[3]) * 1000;
           } catch (_) {}
           const block = await provider.getBlock(log.blockNumber);
+          if (!rawDate) {
+            rawDate = Number(block.timestamp) * 1000;
+          }
           return {
             hash: log.args.certHash, name, course, ipfsHash,
             issuer: log.args.issuer,
-            date: new Date(Number(block.timestamp) * 1000).toLocaleDateString("en-IN"),
+            date: new Date(rawDate).toLocaleDateString("en-IN"),
+            rawDate,
             txHash: log.transactionHash, valid: isValid,
             isEdited: isEdited,
           };
@@ -311,6 +446,7 @@ const Manage = () => {
     if (c.course.includes(" | ID: ")) {
       rawCourse = c.course.split(" | ID: ")[0];
     }
+
     setEditingCert(c);
     setEditForm({
       name: c.name,
@@ -499,17 +635,19 @@ const Manage = () => {
         }}>
           <div style={{
             background: "var(--bg2)", border: "1px solid var(--border)",
-            borderRadius: 20, width: "100%", maxWidth: 980,
+            borderRadius: 20, width: "100%", maxWidth: 1120,
             display: "flex", flexDirection: "column",
             margin: "auto", overflow: "hidden",
+            maxHeight: "92vh",
             boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
           }}>
 
             {/* ── Modal Header ── */}
             <div style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "20px 28px", borderBottom: "1px solid var(--border)",
+              padding: "16px 24px", borderBottom: "1px solid var(--border)",
               background: "rgba(255,255,255,0.015)",
+              flexShrink: 0,
             }}>
               <div>
                 <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
@@ -534,24 +672,28 @@ const Manage = () => {
               >✕</button>
             </div>
 
-            {/* ── Modal Body: Split layout ── */}
+            {/* ── Modal Body: Side-by-side (LEFT Form 40% + RIGHT Preview 60%) ── */}
             <div style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              minHeight: 480,
+              gridTemplateColumns: "40% 60%",
+              height: "60vh",
+              minHeight: 380,
+              flex: 1,
+              overflow: "hidden",
             }}>
 
               {/* ── LEFT: Edit Form ── */}
               <div style={{
                 padding: "24px 28px",
                 borderRight: "1px solid var(--border)",
-                display: "flex", flexDirection: "column", gap: 18, overflowY: "auto",
+                display: "flex", flexDirection: "column", gap: 16,
+                overflowY: "auto",
               }}>
 
                 {/* Notice banner */}
                 <div style={{
                   background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.2)",
-                  borderRadius: 10, padding: "10px 14px", fontSize: 11.5, color: "#fbbf24",
+                  borderRadius: 10, padding: "9px 14px", fontSize: 11.5, color: "#fbbf24",
                   display: "flex", alignItems: "flex-start", gap: 8,
                 }}>
                   <span>⚠️</span>
@@ -561,18 +703,18 @@ const Manage = () => {
                   </span>
                 </div>
 
-                {/* Fields grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                {/* Fields — stacked vertically for clear side panel readability */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
                   {/* Recipient Name */}
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>Recipient Name *</label>
+                  <div>
+                    <label style={{ fontSize: 11, color: "var(--muted)", display: "block", marginBottom: 5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Recipient Name *</label>
                     <input
                       value={editForm.name}
                       onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
                       placeholder="Full name of the certificate recipient"
                       style={{
-                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        width: "100%", padding: "9px 13px", borderRadius: 9, fontSize: 13,
                         background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
                         fontFamily: "inherit", boxSizing: "border-box", outline: "none",
                         transition: "border-color 0.2s",
@@ -583,15 +725,15 @@ const Manage = () => {
                   </div>
 
                   {/* Email */}
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>Recipient Email</label>
+                  <div>
+                    <label style={{ fontSize: 11, color: "var(--muted)", display: "block", marginBottom: 5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Email</label>
                     <input
                       type="email"
                       value={editForm.email}
                       onChange={(e) => setEditForm(f => ({ ...f, email: e.target.value }))}
                       placeholder="email@example.com"
                       style={{
-                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        width: "100%", padding: "9px 13px", borderRadius: 9, fontSize: 13,
                         background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
                         fontFamily: "inherit", boxSizing: "border-box", outline: "none",
                         transition: "border-color 0.2s",
@@ -602,14 +744,14 @@ const Manage = () => {
                   </div>
 
                   {/* Course */}
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>College / Course / Credential *</label>
+                  <div>
+                    <label style={{ fontSize: 11, color: "var(--muted)", display: "block", marginBottom: 5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>College / Course / Credential *</label>
                     <input
                       value={editForm.course}
                       onChange={(e) => setEditForm(f => ({ ...f, course: e.target.value }))}
                       placeholder="B.Tech Computer Science"
                       style={{
-                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        width: "100%", padding: "9px 13px", borderRadius: 9, fontSize: 13,
                         background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
                         fontFamily: "inherit", boxSizing: "border-box", outline: "none",
                         transition: "border-color 0.2s",
@@ -621,13 +763,13 @@ const Manage = () => {
 
                   {/* Institution */}
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>Institution / Org</label>
+                    <label style={{ fontSize: 11, color: "var(--muted)", display: "block", marginBottom: 5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Institution / Org</label>
                     <input
                       value={editForm.institution}
                       onChange={(e) => setEditForm(f => ({ ...f, institution: e.target.value }))}
-                      placeholder="Institution / Org Name"
+                      placeholder="Institution / Org"
                       style={{
-                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        width: "100%", padding: "9px 13px", borderRadius: 9, fontSize: 13,
                         background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
                         fontFamily: "inherit", boxSizing: "border-box", outline: "none",
                         transition: "border-color 0.2s",
@@ -639,13 +781,13 @@ const Manage = () => {
 
                   {/* Grade */}
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>Grade / Score</label>
+                    <label style={{ fontSize: 11, color: "var(--muted)", display: "block", marginBottom: 5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Grade / Score</label>
                     <input
                       value={editForm.grade}
                       onChange={(e) => setEditForm(f => ({ ...f, grade: e.target.value }))}
-                      placeholder="A+ / 9.5 CGPA / 95%"
+                      placeholder="A+ / 9.5 CGPA"
                       style={{
-                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        width: "100%", padding: "9px 13px", borderRadius: 9, fontSize: 13,
                         background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
                         fontFamily: "inherit", boxSizing: "border-box", outline: "none",
                         transition: "border-color 0.2s",
@@ -656,14 +798,14 @@ const Manage = () => {
                   </div>
 
                   {/* Issue Date */}
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>Issue Date</label>
+                  <div>
+                    <label style={{ fontSize: 11, color: "var(--muted)", display: "block", marginBottom: 5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Issue Date</label>
                     <input
                       type="date"
                       value={editForm.issueDate}
                       onChange={(e) => setEditForm(f => ({ ...f, issueDate: e.target.value }))}
                       style={{
-                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        width: "100%", padding: "9px 13px", borderRadius: 9, fontSize: 13,
                         background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
                         fontFamily: "inherit", boxSizing: "border-box", outline: "none",
                         colorScheme: "dark", transition: "border-color 0.2s",
@@ -675,91 +817,59 @@ const Manage = () => {
 
                 </div>
 
-                {/* Lock notice — no file replace */}
+                {/* Lock notice */}
                 <div style={{
-                  display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                  display: "flex", alignItems: "center", gap: 10, padding: "9px 14px",
                   background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)",
                   borderRadius: 10, fontSize: 11.5, color: "#f87171",
                 }}>
-                  <span style={{ fontSize: 16 }}>🔒</span>
-                  <span>The certificate file is <strong>locked</strong> — it cannot be replaced or re-uploaded. Only the text fields above can be updated.</span>
+                  <span style={{ fontSize: 15 }}>🔒</span>
+                  <span>The certificate file is <strong>locked</strong> — it cannot be replaced. Only the text fields above can be updated.</span>
                 </div>
 
               </div>
 
-              {/* ── RIGHT: Certificate File Preview ── */}
+              {/* ── RIGHT: Certificate Preview ── */}
               <div style={{
                 display: "flex", flexDirection: "column",
                 background: "rgba(0,0,0,0.25)",
+                overflow: "hidden",
               }}>
+
                 {/* Preview header */}
                 <div style={{
-                  padding: "14px 20px", borderBottom: "1px solid var(--border)",
+                  padding: "11px 20px",
+                  borderBottom: "1px solid rgba(255,255,255,0.05)",
                   display: "flex", alignItems: "center", gap: 8,
+                  background: "rgba(255,255,255,0.02)",
                 }}>
                   <span style={{ fontSize: 14 }}>📄</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--muted)" }}>Certificate Preview</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--muted)" }}>Preview</span>
                   <span style={{
-                    marginLeft: "auto", fontSize: 10, fontWeight: 600,
-                    padding: "2px 8px", borderRadius: 99,
+                    fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 99,
                     background: "rgba(74,240,196,0.1)", color: "#4af0c4",
                     border: "1px solid rgba(74,240,196,0.25)",
                   }}>LIVE</span>
-                </div>
-
-                {/* Preview body */}
-                <div style={{ flex: 1, position: "relative", minHeight: 360 }}>
-                  {editingCert.ipfsHash ? (
-                    <iframe
-                      key={editingCert.hash}
-                      src={`https://gateway.pinata.cloud/ipfs/${editingCert.ipfsHash}`}
-                      title="Certificate Preview"
-                      style={{
-                        width: "100%", height: "100%", border: "none",
-                        display: "block", minHeight: 420,
-                        background: "#fff",
-                      }}
-                    />
-                  ) : (
-                    <div style={{
-                      display: "flex", flexDirection: "column",
-                      alignItems: "center", justifyContent: "center",
-                      height: "100%", minHeight: 320, gap: 14,
-                      color: "var(--muted)", padding: 32, textAlign: "center",
-                    }}>
-                      <span style={{ fontSize: 48, opacity: 0.4 }}>📂</span>
-                      <div>
-                        <p style={{ fontSize: 14, fontWeight: 600, margin: "0 0 6px" }}>No File Attached</p>
-                        <p style={{ fontSize: 12, margin: 0, opacity: 0.6 }}>This certificate was issued without an attached PDF document.</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Preview footer: open in new tab */}
-                {editingCert.ipfsHash && (
-                  <div style={{
-                    padding: "10px 20px", borderTop: "1px solid var(--border)",
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    fontSize: 11,
-                  }}>
-                    <span style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace", wordBreak: "break-all", flex: 1, marginRight: 12, opacity: 0.7 }}>
-                      ipfs://{editingCert.ipfsHash.slice(0, 20)}…
-                    </span>
+                  <div style={{ flex: 1 }} />
+                  {editingCert.ipfsHash && (
                     <a
-                      href={`https://gateway.pinata.cloud/ipfs/${editingCert.ipfsHash}`}
+                      href={`https://ipfs.io/ipfs/${editingCert.ipfsHash}`}
                       target="_blank"
                       rel="noreferrer"
                       style={{
                         fontSize: 11, padding: "4px 12px", borderRadius: 7,
                         background: "rgba(124,109,250,0.12)", border: "1px solid rgba(124,109,250,0.3)",
-                        color: "#a78bfa", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0,
+                        color: "#a78bfa", textDecoration: "none", whiteSpace: "nowrap",
                       }}
-                    >
-                      ↗ Open Full
-                    </a>
-                  </div>
-                )}
+                    >↗ Full</a>
+                  )}
+                </div>
+
+                {/* Preview body — stretches fully inside the grid row */}
+                <div style={{ flex: 1, position: "relative" }}>
+                  <CertPreview ipfsHash={editingCert.ipfsHash} height="100%" />
+                </div>
+
               </div>
 
             </div>
@@ -767,8 +877,9 @@ const Manage = () => {
             {/* ── Modal Footer: Action buttons ── */}
             <div style={{
               display: "flex", gap: 10, justifyContent: "flex-end",
-              padding: "16px 28px", borderTop: "1px solid var(--border)",
+              padding: "16px 24px", borderTop: "1px solid var(--border)",
               background: "rgba(255,255,255,0.015)",
+              flexShrink: 0,
             }}>
               <button
                 onClick={() => setEditingCert(null)}

@@ -7,6 +7,7 @@ import {
   CONTRACT_DEPLOYMENT_BLOCK,
   SEPOLIA_RPC,
   generateCertHash,
+  queryFilterChunked,
 } from "../utils/ethers";
 import { uploadToIPFS } from "../utils/pinata";
 import { useWallet } from "../context/WalletContext";
@@ -239,10 +240,11 @@ export const useContract = () => {
   const checkCertIdExists = useCallback(async (certId) => {
     try {
       const contract = getReadOnlyContract();
+      const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
       const filter = contract.filters.CertificateIssued();
-      const events = await contract.queryFilter(filter, CONTRACT_DEPLOYMENT_BLOCK, 'latest');
+      const events = await queryFilterChunked(contract, filter, CONTRACT_DEPLOYMENT_BLOCK, "latest", provider);
       for (let event of events) {
-        const courseStr = event.args[2] || ""; 
+        const courseStr = event.args[2] || "";
         if (courseStr.includes(`| ID: ${certId}`)) {
           return true;
         }
@@ -250,15 +252,16 @@ export const useContract = () => {
       return false;
     } catch (err) {
       console.error("Error checking events:", err);
-      return false; 
+      return false;
     }
   }, []);
 
   const getNextCertId = useCallback(async () => {
     try {
       const contract = getReadOnlyContract();
+      const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
       const filter = contract.filters.CertificateIssued();
-      const events = await contract.queryFilter(filter, CONTRACT_DEPLOYMENT_BLOCK, 'latest');
+      const events = await queryFilterChunked(contract, filter, CONTRACT_DEPLOYMENT_BLOCK, "latest", provider);
       let maxNum = 0;
       for (const event of events) {
         const courseStr = event.args[2] || "";
