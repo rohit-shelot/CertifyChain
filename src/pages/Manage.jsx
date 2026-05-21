@@ -244,8 +244,7 @@ const Manage = () => {
 
   // States for edit modal
   const [editingCert, setEditingCert] = useState(null);
-  const [editForm, setEditForm]       = useState({ name: "", course: "" });
-  const [editFile, setEditFile]       = useState(null);
+  const [editForm, setEditForm]       = useState({ name: "", email: "", course: "", institution: "", grade: "", issueDate: "" });
   const [savingEdit, setSavingEdit]   = useState(false);
 
   const getContract = useCallback((signer = false) => {
@@ -313,8 +312,14 @@ const Manage = () => {
       rawCourse = c.course.split(" | ID: ")[0];
     }
     setEditingCert(c);
-    setEditForm({ name: c.name, course: rawCourse });
-    setEditFile(null);
+    setEditForm({
+      name: c.name,
+      email: "",
+      course: rawCourse,
+      institution: "",
+      grade: "",
+      issueDate: "",
+    });
   };
 
   const handleSaveEdit = async () => {
@@ -331,7 +336,7 @@ const Manage = () => {
         certHash: editingCert.hash,
         name: editForm.name,
         course: combinedCourse,
-        file: editFile,
+        file: null,
         existingIpfsHash: editingCert.ipfsHash,
       });
 
@@ -413,6 +418,13 @@ const Manage = () => {
         .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 8px; }
         .refresh-btn { font-size: 12px; color: var(--muted); background: var(--bg3); border: 1px solid var(--border); padding: 5px 10px; border-radius: 7px; cursor: pointer; font-family: inherit; white-space: nowrap; flex-shrink: 0; }
         .refresh-btn:hover { color: #fff; }
+
+        /* Edit modal: split layout responsive */
+        .edit-modal-body { display: grid; grid-template-columns: 1fr 1fr; min-height: 480px; }
+        @media (max-width: 700px) {
+          .edit-modal-body { grid-template-columns: 1fr; }
+          .edit-modal-preview { border-top: 1px solid var(--border); border-right: none !important; min-height: 280px; }
+        }
       `}</style>
 
       <div className="manage-page page-enter">
@@ -481,77 +493,288 @@ const Manage = () => {
       {editingCert && (
         <div style={{
           position: "fixed", inset: 0, zIndex: 1000,
-          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)",
-          display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+          background: "rgba(0,0,0,0.82)", backdropFilter: "blur(10px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "16px",
+          overflowY: "auto",
         }}>
           <div style={{
             background: "var(--bg2)", border: "1px solid var(--border)",
-            borderRadius: 16, padding: 28, width: "100%", maxWidth: 480,
-            display: "flex", flexDirection: "column", gap: 16,
+            borderRadius: 20, width: "100%", maxWidth: 980,
+            display: "flex", flexDirection: "column",
+            margin: "auto", overflow: "hidden",
+            boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>✏️ Edit Certificate</h3>
+
+            {/* ── Modal Header ── */}
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "20px 28px", borderBottom: "1px solid var(--border)",
+              background: "rgba(255,255,255,0.015)",
+            }}>
+              <div>
+                <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                  ✏️ Edit Certificate
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, padding: "2px 10px",
+                    borderRadius: 99, background: "rgba(234,179,8,0.15)", color: "#eab308",
+                    border: "1px solid rgba(234,179,8,0.3)",
+                  }}>EDITING</span>
+                </h3>
+                <p style={{ fontSize: 12, color: "var(--muted)", margin: "4px 0 0" }}>
+                  Updating details for <strong style={{ color: "#a78bfa" }}>{editingCert.name}</strong> — MetaMask confirmation required.
+                </p>
+              </div>
               <button
                 onClick={() => setEditingCert(null)}
-                style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 20 }}
+                style={{
+                  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+                  color: "var(--muted)", cursor: "pointer", fontSize: 18, lineHeight: 1,
+                  padding: "6px 10px", borderRadius: 8, transition: "all 0.2s",
+                }}
               >✕</button>
             </div>
 
-            <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>
-              This will update the certificate on-chain. A transaction confirmation via MetaMask is required.
-            </p>
+            {/* ── Modal Body: Split layout ── */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              minHeight: 480,
+            }}>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div>
-                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 5 }}>Recipient Name *</label>
-                <input
-                  value={editForm.name}
-                  onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
-                  style={{
-                    width: "100%", padding: "9px 13px", borderRadius: 9, fontSize: 14,
-                    background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
-                    fontFamily: "inherit", boxSizing: "border-box",
-                  }}
-                />
+              {/* ── LEFT: Edit Form ── */}
+              <div style={{
+                padding: "24px 28px",
+                borderRight: "1px solid var(--border)",
+                display: "flex", flexDirection: "column", gap: 18, overflowY: "auto",
+              }}>
+
+                {/* Notice banner */}
+                <div style={{
+                  background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.2)",
+                  borderRadius: 10, padding: "10px 14px", fontSize: 11.5, color: "#fbbf24",
+                  display: "flex", alignItems: "flex-start", gap: 8,
+                }}>
+                  <span>⚠️</span>
+                  <span>
+                    Only <strong>Recipient Name</strong> and <strong>Course / Credential</strong> are stored on-chain.
+                    The certificate file cannot be replaced — only text fields can be updated.
+                  </span>
+                </div>
+
+                {/* Fields grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+
+                  {/* Recipient Name */}
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>Recipient Name *</label>
+                    <input
+                      value={editForm.name}
+                      onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="Full name of the certificate recipient"
+                      style={{
+                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
+                        fontFamily: "inherit", boxSizing: "border-box", outline: "none",
+                        transition: "border-color 0.2s",
+                      }}
+                      onFocus={e => e.target.style.borderColor = "#a78bfa"}
+                      onBlur={e => e.target.style.borderColor = "var(--border)"}
+                    />
+                  </div>
+
+                  {/* Email */}
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>Recipient Email</label>
+                    <input
+                      type="email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm(f => ({ ...f, email: e.target.value }))}
+                      placeholder="email@example.com"
+                      style={{
+                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
+                        fontFamily: "inherit", boxSizing: "border-box", outline: "none",
+                        transition: "border-color 0.2s",
+                      }}
+                      onFocus={e => e.target.style.borderColor = "#a78bfa"}
+                      onBlur={e => e.target.style.borderColor = "var(--border)"}
+                    />
+                  </div>
+
+                  {/* Course */}
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>College / Course / Credential *</label>
+                    <input
+                      value={editForm.course}
+                      onChange={(e) => setEditForm(f => ({ ...f, course: e.target.value }))}
+                      placeholder="B.Tech Computer Science"
+                      style={{
+                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
+                        fontFamily: "inherit", boxSizing: "border-box", outline: "none",
+                        transition: "border-color 0.2s",
+                      }}
+                      onFocus={e => e.target.style.borderColor = "#a78bfa"}
+                      onBlur={e => e.target.style.borderColor = "var(--border)"}
+                    />
+                  </div>
+
+                  {/* Institution */}
+                  <div>
+                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>Institution / Org</label>
+                    <input
+                      value={editForm.institution}
+                      onChange={(e) => setEditForm(f => ({ ...f, institution: e.target.value }))}
+                      placeholder="Institution / Org Name"
+                      style={{
+                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
+                        fontFamily: "inherit", boxSizing: "border-box", outline: "none",
+                        transition: "border-color 0.2s",
+                      }}
+                      onFocus={e => e.target.style.borderColor = "#a78bfa"}
+                      onBlur={e => e.target.style.borderColor = "var(--border)"}
+                    />
+                  </div>
+
+                  {/* Grade */}
+                  <div>
+                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>Grade / Score</label>
+                    <input
+                      value={editForm.grade}
+                      onChange={(e) => setEditForm(f => ({ ...f, grade: e.target.value }))}
+                      placeholder="A+ / 9.5 CGPA / 95%"
+                      style={{
+                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
+                        fontFamily: "inherit", boxSizing: "border-box", outline: "none",
+                        transition: "border-color 0.2s",
+                      }}
+                      onFocus={e => e.target.style.borderColor = "#a78bfa"}
+                      onBlur={e => e.target.style.borderColor = "var(--border)"}
+                    />
+                  </div>
+
+                  {/* Issue Date */}
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6, fontWeight: 600 }}>Issue Date</label>
+                    <input
+                      type="date"
+                      value={editForm.issueDate}
+                      onChange={(e) => setEditForm(f => ({ ...f, issueDate: e.target.value }))}
+                      style={{
+                        width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+                        background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
+                        fontFamily: "inherit", boxSizing: "border-box", outline: "none",
+                        colorScheme: "dark", transition: "border-color 0.2s",
+                      }}
+                      onFocus={e => e.target.style.borderColor = "#a78bfa"}
+                      onBlur={e => e.target.style.borderColor = "var(--border)"}
+                    />
+                  </div>
+
+                </div>
+
+                {/* Lock notice — no file replace */}
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                  background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)",
+                  borderRadius: 10, fontSize: 11.5, color: "#f87171",
+                }}>
+                  <span style={{ fontSize: 16 }}>🔒</span>
+                  <span>The certificate file is <strong>locked</strong> — it cannot be replaced or re-uploaded. Only the text fields above can be updated.</span>
+                </div>
+
               </div>
-              <div>
-                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 5 }}>Course / Program *</label>
-                <input
-                  value={editForm.course}
-                  onChange={(e) => setEditForm(f => ({ ...f, course: e.target.value }))}
-                  style={{
-                    width: "100%", padding: "9px 13px", borderRadius: 9, fontSize: 14,
-                    background: "var(--bg3)", border: "1px solid var(--border)", color: "#fff",
-                    fontFamily: "inherit", boxSizing: "border-box",
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 5 }}>
-                  Replace PDF (optional)
-                </label>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={(e) => setEditFile(e.target.files[0] || null)}
-                  style={{
-                    width: "100%", padding: "8px 12px", borderRadius: 9, fontSize: 13,
-                    background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--muted)",
-                    fontFamily: "inherit", boxSizing: "border-box", cursor: "pointer",
-                  }}
-                />
-                {editFile && (
-                  <div style={{ fontSize: 11, color: "#4af0c4", marginTop: 4 }}>📄 {editFile.name}</div>
+
+              {/* ── RIGHT: Certificate File Preview ── */}
+              <div style={{
+                display: "flex", flexDirection: "column",
+                background: "rgba(0,0,0,0.25)",
+              }}>
+                {/* Preview header */}
+                <div style={{
+                  padding: "14px 20px", borderBottom: "1px solid var(--border)",
+                  display: "flex", alignItems: "center", gap: 8,
+                }}>
+                  <span style={{ fontSize: 14 }}>📄</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--muted)" }}>Certificate Preview</span>
+                  <span style={{
+                    marginLeft: "auto", fontSize: 10, fontWeight: 600,
+                    padding: "2px 8px", borderRadius: 99,
+                    background: "rgba(74,240,196,0.1)", color: "#4af0c4",
+                    border: "1px solid rgba(74,240,196,0.25)",
+                  }}>LIVE</span>
+                </div>
+
+                {/* Preview body */}
+                <div style={{ flex: 1, position: "relative", minHeight: 360 }}>
+                  {editingCert.ipfsHash ? (
+                    <iframe
+                      key={editingCert.hash}
+                      src={`https://gateway.pinata.cloud/ipfs/${editingCert.ipfsHash}`}
+                      title="Certificate Preview"
+                      style={{
+                        width: "100%", height: "100%", border: "none",
+                        display: "block", minHeight: 420,
+                        background: "#fff",
+                      }}
+                    />
+                  ) : (
+                    <div style={{
+                      display: "flex", flexDirection: "column",
+                      alignItems: "center", justifyContent: "center",
+                      height: "100%", minHeight: 320, gap: 14,
+                      color: "var(--muted)", padding: 32, textAlign: "center",
+                    }}>
+                      <span style={{ fontSize: 48, opacity: 0.4 }}>📂</span>
+                      <div>
+                        <p style={{ fontSize: 14, fontWeight: 600, margin: "0 0 6px" }}>No File Attached</p>
+                        <p style={{ fontSize: 12, margin: 0, opacity: 0.6 }}>This certificate was issued without an attached PDF document.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Preview footer: open in new tab */}
+                {editingCert.ipfsHash && (
+                  <div style={{
+                    padding: "10px 20px", borderTop: "1px solid var(--border)",
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    fontSize: 11,
+                  }}>
+                    <span style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace", wordBreak: "break-all", flex: 1, marginRight: 12, opacity: 0.7 }}>
+                      ipfs://{editingCert.ipfsHash.slice(0, 20)}…
+                    </span>
+                    <a
+                      href={`https://gateway.pinata.cloud/ipfs/${editingCert.ipfsHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        fontSize: 11, padding: "4px 12px", borderRadius: 7,
+                        background: "rgba(124,109,250,0.12)", border: "1px solid rgba(124,109,250,0.3)",
+                        color: "#a78bfa", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0,
+                      }}
+                    >
+                      ↗ Open Full
+                    </a>
+                  </div>
                 )}
               </div>
+
             </div>
 
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+            {/* ── Modal Footer: Action buttons ── */}
+            <div style={{
+              display: "flex", gap: 10, justifyContent: "flex-end",
+              padding: "16px 28px", borderTop: "1px solid var(--border)",
+              background: "rgba(255,255,255,0.015)",
+            }}>
               <button
                 onClick={() => setEditingCert(null)}
                 disabled={savingEdit}
                 style={{
-                  fontSize: 13, padding: "8px 18px", borderRadius: 9, cursor: "pointer",
+                  fontSize: 13, padding: "9px 20px", borderRadius: 9, cursor: "pointer",
                   fontFamily: "inherit", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--muted)",
                 }}
               >
@@ -561,14 +784,16 @@ const Manage = () => {
                 onClick={handleSaveEdit}
                 disabled={savingEdit || !editForm.name || !editForm.course}
                 style={{
-                  fontSize: 13, padding: "8px 20px", borderRadius: 9, cursor: savingEdit ? "not-allowed" : "pointer",
-                  fontFamily: "inherit", opacity: savingEdit ? 0.6 : 1,
+                  fontSize: 13, padding: "9px 22px", borderRadius: 9,
+                  cursor: (savingEdit || !editForm.name || !editForm.course) ? "not-allowed" : "pointer",
+                  fontFamily: "inherit", opacity: (savingEdit || !editForm.name || !editForm.course) ? 0.5 : 1,
                   background: "linear-gradient(135deg,#eab308,#f59e0b)", border: "none", color: "#000", fontWeight: 700,
                 }}
               >
                 {savingEdit ? "Saving…" : "💾 Save Changes"}
               </button>
             </div>
+
           </div>
         </div>
       )}
