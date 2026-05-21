@@ -106,17 +106,22 @@ const VerifyCertificate = () => {
               }`}>
               {result.found && result.isValid ? "✓" : "✗"}
             </div>
-            <h3 className="text-xl font-bold mb-1">
-              {result.found && result.isValid
-                ? "Certificate Valid"
-                : result.found && !result.isValid
-                  ? "Certificate Revoked"
-                  : "Certificate Not Found"
-              }
+            <h3 className="text-xl font-bold mb-1 flex items-center justify-center gap-2">
+              <span>
+                {result.found && result.isValid
+                  ? "Certificate Valid"
+                  : result.found && !result.isValid
+                    ? "Certificate Revoked"
+                    : "Certificate Not Found"
+                }
+              </span>
+              {result.found && result.isValid && result.isEdited && (
+                <span className="text-xs text-slate-500 font-normal italic">(edited)</span>
+              )}
             </h3>
             <p className="text-slate-500 text-sm">
               {result.found && result.isValid
-                ? "This certificate is authentic and active on Sepolia."
+                ? `This certificate is authentic and active on Sepolia.${result.isEdited ? " (Note: This certificate was edited by the issuer)" : ""}`
                 : result.found
                   ? "This certificate exists but has been revoked."
                   : "No matching certificate found on-chain for this hash."
@@ -139,7 +144,10 @@ const VerifyCertificate = () => {
                   <div key={label} className="bg-bg-3 rounded-xl p-3">
                     <div className="text-xs text-slate-500 font-semibold uppercase tracking-widest mb-1">{label}</div>
                     {label === "Status"
-                      ? <Badge variant={result.isValid ? "valid" : "revoked"}>{result.isValid ? "✓ Valid" : "✗ Revoked"}</Badge>
+                      ? <Badge variant={result.isValid ? "valid" : "revoked"}>
+                          {result.isValid ? "✓ Valid" : "✗ Revoked"}
+                          {result.isEdited && " (Edited)"}
+                        </Badge>
                       : <div className="text-sm font-medium">{val || "—"}</div>
                     }
                   </div>

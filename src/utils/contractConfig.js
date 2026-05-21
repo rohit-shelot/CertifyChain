@@ -231,6 +231,11 @@ export const CONTRACT_ABI = [
 				"internalType": "bool",
 				"name": "isValid",
 				"type": "bool"
+			},
+			{
+				"internalType": "bool",
+				"name": "isEdited",
+				"type": "bool"
 			}
 		],
 		"stateMutability": "view",
@@ -296,6 +301,11 @@ export const CONTRACT_ABI = [
 						"internalType": "bool",
 						"name": "isValid",
 						"type": "bool"
+					},
+					{
+						"internalType": "bool",
+						"name": "isEdited",
+						"type": "bool"
 					}
 				],
 				"internalType": "struct CertificateVerification.Certificate",
@@ -318,6 +328,71 @@ export const CONTRACT_ABI = [
 		],
 		"stateMutability": "view",
 		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "bytes32",
+				"name": "certHash",
+				"type": "bytes32"
+			},
+			{
+				"internalType": "string",
+				"name": "name",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "course",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "ipfsHash",
+				"type": "string"
+			}
+		],
+		"name": "editCertificate",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "bytes32",
+				"name": "certHash",
+				"type": "bytes32"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "name",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "course",
+				"type": "string"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "issuer",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "timestamp",
+				"type": "uint256"
+			}
+		],
+		"name": "CertificateEdited",
+		"type": "event"
 	}
 ];
 

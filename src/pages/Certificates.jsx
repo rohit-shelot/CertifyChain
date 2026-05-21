@@ -115,6 +115,7 @@ const Certificates = () => {
       const parsed = await Promise.all(
         logs.map(async (log) => {
           let isValid   = false;
+          let isEdited  = false;
           let name      = log.args.name;
           let course    = log.args.course;
           let ipfsHash  = "";
@@ -123,6 +124,7 @@ const Certificates = () => {
           try {
             const cert = await contract.verifyCertificate(log.args.certHash);
             isValid   = cert[5];
+            isEdited  = cert[6];
             name      = cert[0] || name;
             course    = cert[1] || course;
             ipfsHash  = cert[2];
@@ -150,6 +152,7 @@ const Certificates = () => {
             txHash:      log.transactionHash,
             blockNumber: log.blockNumber,
             valid:       isValid,
+            isEdited:    isEdited,
           };
         })
       );
@@ -315,7 +318,14 @@ const CertCard = ({ cert: c, onClick }) => {
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 2 }}>
         <Badge variant={c.valid ? "valid" : "revoked"}>{c.valid ? "✓ Valid" : "✗ Revoked"}</Badge>
       </div>
-      <div style={styles.certName}>{c.name}</div>
+      <div style={styles.certName}>
+        {c.name}
+        {c.isEdited && (
+          <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic", marginLeft: 6, fontWeight: "normal" }}>
+            (edited)
+          </span>
+        )}
+      </div>
       <div style={styles.certCourse}>{c.course}</div>
       <div style={styles.certMeta}>
         <div style={styles.certMetaRow}>

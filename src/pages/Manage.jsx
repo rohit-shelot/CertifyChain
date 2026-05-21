@@ -90,7 +90,7 @@ const ABI = [
 ];
 
 /* ── CertCard ── */
-const CertCard = ({ c, revoking, onRevoke, onCopyLink, onVerify }) => {
+const CertCard = ({ c, revoking, onRevoke, onCopyLink, onVerify, onEdit }) => {
   const [showQR, setShowQR] = useState(false);
   const verifyUrl = `${window.location.origin}/verify?hash=${c.hash}`;
 
@@ -114,12 +114,19 @@ const CertCard = ({ c, revoking, onRevoke, onCopyLink, onVerify }) => {
       {/* Top row */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 2 }}>{c.name}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 2 }}>
+            {c.name}
+            {c.isEdited && (
+              <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic", marginLeft: 6, fontWeight: "normal" }}>
+                (edited)
+              </span>
+            )}
+          </div>
           <div style={{ fontSize: 12, color: "var(--muted)" }}>{displayCourse}</div>
           {certId && <div style={{ fontSize: 11, color: "var(--muted)", opacity: 0.7 }}>ID: {certId}</div>}
         </div>
         <Badge variant={c.valid ? "valid" : "revoked"}>
-          {c.valid ? "✓ Valid" : "✗ Revoked"}
+          {c.valid ? `✓ Valid${c.isEdited ? " (Edited)" : ""}` : "✗ Revoked"}
         </Badge>
       </div>
 
@@ -189,6 +196,20 @@ const CertCard = ({ c, revoking, onRevoke, onCopyLink, onVerify }) => {
             {revoking === c.hash ? "Revoking…" : "✕ Want to Revoke Certificate?"}
           </button>
         )}
+
+        {/* Edit */}
+        {c.valid && (
+          <button
+            onClick={() => onEdit(c)}
+            style={{
+              fontSize: 12, padding: "5px 12px", borderRadius: 7, cursor: "pointer",
+              fontFamily: "inherit", background: "rgba(234,179,8,0.1)",
+              border: "1px solid rgba(234,179,8,0.3)", color: "#eab308",
+            }}
+          >
+            ✏️ Edit
+          </button>
+        )}
       </div>
 
       {/* QR panel */}
@@ -214,12 +235,18 @@ const CertCard = ({ c, revoking, onRevoke, onCopyLink, onVerify }) => {
 const Manage = () => {
   const navigate = useNavigate();
   const { account }                = useWallet();
-  const { addNewIssuer } = useContract();
+  const { addNewIssuer, edit } = useContract();
 
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [certs,        setCerts]        = useState([]);
   const [loadingCerts, setLoadingCerts] = useState(true);
   const [revoking,     setRevoking]     = useState(null);
+
+  // States for edit modal
+  const [editingCert, setEditingCert] = useState(null);
+  const [editForm, setEditForm]       = useState({ name: "", course: "" });
+  const [editFile, setEditFile]       = useState(null);
+  const [savingEdit, setSavingEdit]   = useState(false);
 
   const getContract = useCallback((signer = false) => {
     if (!window.ethereum) throw new Error("MetaMask not found");
@@ -254,10 +281,12 @@ const Manage = () => {
 
       const parsed = await Promise.all(
         logs.map(async (log) => {
-          let isValid = false, name = log.args.name, course = log.args.course, ipfsHash = "";
+          let isValid = false, isEdited = false, name = log.args.name, course = log.args.course, ipfsHash = "";
           try {
             const cert = await contract.verifyCertificate(log.args.certHash);
-            isValid = cert[5]; name = cert[0] || name; course = cert[1] || course; ipfsHash = cert[2];
+            isValid = cert[5];
+            isEdited = cert[6];
+            name = cert[0] || name; course = cert[1] || course; ipfsHash = cert[2];
           } catch (_) {}
           const block = await provider.getBlock(log.blockNumber);
           return {
@@ -265,6 +294,7 @@ const Manage = () => {
             issuer: log.args.issuer,
             date: new Date(Number(block.timestamp) * 1000).toLocaleDateString("en-IN"),
             txHash: log.transactionHash, valid: isValid,
+            isEdited: isEdited,
           };
         })
       );
@@ -276,6 +306,43 @@ const Manage = () => {
       toast.error("Failed to load certificates: " + err.message);
     } finally { setLoadingCerts(false); }
   }, [account, getContract]);
+
+  const handleOpenEdit = (c) => {
+    let rawCourse = c.course;
+    if (c.course.includes(" | ID: ")) {
+      rawCourse = c.course.split(" | ID: ")[0];
+    }
+    setEditingCert(c);
+    setEditForm({ name: c.name, course: rawCourse });
+    setEditFile(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingCert) return;
+    setSavingEdit(true);
+    try {
+      let originalId = "";
+      if (editingCert.course.includes(" | ID: ")) {
+        originalId = editingCert.course.split(" | ID: ")[1];
+      }
+      const combinedCourse = originalId ? `${editForm.course} | ID: ${originalId}` : editForm.course;
+
+      await edit({
+        certHash: editingCert.hash,
+        name: editForm.name,
+        course: combinedCourse,
+        file: editFile,
+        existingIpfsHash: editingCert.ipfsHash,
+      });
+
+      setEditingCert(null);
+      await loadCerts();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   useEffect(() => {
     if (account && !checkingAuth) {

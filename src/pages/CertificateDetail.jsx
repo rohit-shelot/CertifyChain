@@ -290,6 +290,7 @@ const CertificateDetail = () => {
           issueDate: Number(result[3]) * 1000,
           issuer: result[4],
           valid: result[5],
+          isEdited: result[6],
           txHash: state?.cert?.txHash || null,
           blockNumber: state?.cert?.blockNumber || null,
           date: new Date(Number(result[3]) * 1000).toLocaleDateString("en-IN"),
@@ -379,7 +380,12 @@ const CertificateDetail = () => {
           <div style={s.docOrg}>⛓ Blockchain Certificate</div>
 
           <div style={s.docTitle}>Certificate of Completion — Issued to</div>
-          <div style={s.docRecipient}>{cert.name}</div>
+          <div style={s.docRecipient}>
+            {cert.name}
+            {cert.isEdited && (
+              <span style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic", marginLeft: 8, fontWeight: 500 }}>(edited)</span>
+            )}
+          </div>
           <div style={s.docCourse}>{cert.course}</div>
           
           <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 8, fontFamily: "'JetBrains Mono', monospace", fontWeight: 500 }}>
@@ -387,7 +393,7 @@ const CertificateDetail = () => {
           </div>
 
           <div style={s.docStatusChip(cert.valid)}>
-            {cert.valid ? "✓ Valid & Active" : "✗ Revoked"}
+            {cert.valid ? `✓ Valid & Active${cert.isEdited ? " (Edited)" : ""}` : "✗ Revoked"}
           </div>
         </div>
 
@@ -422,7 +428,7 @@ const CertificateDetail = () => {
               color: cert.valid ? "#22c55e" : "#ef4444",
               fontWeight: 600,
             }}>
-              {cert.valid ? "Valid" : "Revoked"}
+              {cert.valid ? `Valid${cert.isEdited ? " (Edited)" : ""}` : "Revoked"}
             </div>
           </div>
 

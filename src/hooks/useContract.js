@@ -94,6 +94,7 @@ export const useContract = () => {
       const issueDate = Number(data[3]) * 1000;
       const issuer    = data[4];
       const isValid   = data[5];
+      const isEdited  = data[6];
 
       if (!name || name === "") {
         toast.error("Certificate not found", { id: toastId });
@@ -106,7 +107,7 @@ export const useContract = () => {
         toast.error("Certificate has been Revoked!", { id: toastId });
       }
 
-      return { found: true, name, course, ipfsHash, issueDate, issuer, isValid };
+      return { found: true, name, course, ipfsHash, issueDate, issuer, isValid, isEdited };
 
     } catch (err) {
       console.error("VERIFY ERROR:", err);
@@ -132,6 +133,42 @@ export const useContract = () => {
 
     } catch (err) {
       toast.error("Revocation failed: " + (err.reason || err.message), { id: toastId });
+      throw err;
+    }
+  }, [account]);
+
+  const edit = useCallback(async ({ certHash, name, course, file, existingIpfsHash }) => {
+    if (!account) throw new Error("Wallet not connected");
+
+    const toastId = toast.loading("Updating certificate...");
+
+    try {
+      let ipfsHash = existingIpfsHash || "";
+      if (file) {
+        toast.loading("Uploading new document to IPFS...", { id: toastId });
+        const res = await uploadToIPFS(file);
+        ipfsHash = res.IpfsHash;
+      }
+
+      const contract = await getContract();
+
+      toast.loading("Confirm edit in MetaMask...", { id: toastId });
+      const tx = await contract.editCertificate(certHash, name, course, ipfsHash);
+
+      const receipt = await tx.wait();
+
+      toast.success("Certificate updated successfully!", { id: toastId });
+
+      return {
+        certHash,
+        ipfsHash,
+        txHash: tx.hash,
+        receipt,
+      };
+
+    } catch (err) {
+      console.error("EDIT ERROR:", err);
+      toast.error("Edit failed: " + (err.reason || err.message), { id: toastId });
       throw err;
     }
   }, [account]);
@@ -239,7 +276,7 @@ export const useContract = () => {
     }
   }, []);
 
-  return { issue, verify, revoke, addNewIssuer, checkIssuer, checkOwner, checkExists, checkCertIdExists, getNextCertId };
+  return { issue, verify, revoke, edit, addNewIssuer, checkIssuer, checkOwner, checkExists, checkCertIdExists, getNextCertId };
 };
 
 export default useContract;
