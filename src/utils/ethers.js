@@ -1,7 +1,7 @@
-export { CONTRACT_ADDRESS, CONTRACT_ABI } from "./contractConfig";
+export { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "./contractConfig";
 
 import { ethers } from "ethers";
-import { CONTRACT_ADDRESS, CONTRACT_ABI, SEPOLIA_CHAIN_ID } from "./contractConfig";
+import { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC, SEPOLIA_CHAIN_ID } from "./contractConfig";
 
 
 

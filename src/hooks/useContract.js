@@ -4,6 +4,8 @@ import { ethers } from "ethers";
 import {
   CONTRACT_ADDRESS,
   CONTRACT_ABI,
+  CONTRACT_DEPLOYMENT_BLOCK,
+  SEPOLIA_RPC,
   generateCertHash,
 } from "../utils/ethers";
 import { uploadToIPFS } from "../utils/pinata";
@@ -22,7 +24,7 @@ export const useContract = () => {
   };
 
   const getReadOnlyContract = () => {
-    const provider = new ethers.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+    const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
     return new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
   };
 
@@ -201,7 +203,7 @@ export const useContract = () => {
     try {
       const contract = getReadOnlyContract();
       const filter = contract.filters.CertificateIssued();
-      const events = await contract.queryFilter(filter, 0, 'latest');
+      const events = await contract.queryFilter(filter, CONTRACT_DEPLOYMENT_BLOCK, 'latest');
       for (let event of events) {
         const courseStr = event.args[2] || ""; 
         if (courseStr.includes(`| ID: ${certId}`)) {
@@ -219,7 +221,7 @@ export const useContract = () => {
     try {
       const contract = getReadOnlyContract();
       const filter = contract.filters.CertificateIssued();
-      const events = await contract.queryFilter(filter, 0, 'latest');
+      const events = await contract.queryFilter(filter, CONTRACT_DEPLOYMENT_BLOCK, 'latest');
       let maxNum = 0;
       for (const event of events) {
         const courseStr = event.args[2] || "";

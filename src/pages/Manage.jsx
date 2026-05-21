@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardTitle, InputField, PrimaryButton, Badge, Spinner, EmptyState } from "../components/UI";
 import { useContract } from "../hooks/useContract";
 import { useWallet } from "../context/WalletContext";
-import { CONTRACT_ADDRESS } from "../utils/contractConfig";
+import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
 import { shortenAddress } from "../utils/ethers";
 import toast from "react-hot-toast";
 
@@ -246,8 +246,7 @@ const Manage = () => {
     try {
       const contract  = await getContract();
       const provider  = new ethers.BrowserProvider(window.ethereum);
-      const current   = await provider.getBlockNumber();
-      const fromBlock = Math.max(0, current - 50000);
+      const fromBlock = CONTRACT_DEPLOYMENT_BLOCK;
 
       /* filter by issuer topic directly */
       const filter = contract.filters.CertificateIssued(null, null, null, account);

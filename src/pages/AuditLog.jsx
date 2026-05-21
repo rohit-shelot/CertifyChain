@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { Card, CardTitle, Badge, Spinner, EmptyState } from "../components/UI";
-import { CONTRACT_ADDRESS } from "../utils/contractConfig";
+import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
 import { formatTimestamp, shortenAddress } from "../utils/ethers";
 import { useWallet } from "../context/WalletContext";
 import { useContract } from "../hooks/useContract";
@@ -92,8 +92,7 @@ const AuditLog = () => {
 
       const provider   = new ethers.BrowserProvider(window.ethereum);
       const contract   = new ethers.Contract(CONTRACT_ADDRESS, ABI_WITH_EVENTS, provider);
-      const current    = await provider.getBlockNumber();
-      const fromBlock  = Math.max(0, current - 10000);
+      const fromBlock  = CONTRACT_DEPLOYMENT_BLOCK;
 
       const issuedFilter  = contract.filters.CertificateIssued();
       const revokedFilter = contract.filters.CertificateRevoked();

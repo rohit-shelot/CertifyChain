@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { Spinner } from "../components/UI";
 import { CONTRACT_ADDRESS } from "../utils/contractConfig";
-import { shortenAddress } from "../utils/ethers";
+import { shortenAddress, SEPOLIA_RPC } from "../utils/ethers";
 import toast from "react-hot-toast";
 
 const ABI = [
@@ -270,7 +270,7 @@ const CertificateDetail = () => {
   const decodedHash = decodeURIComponent(hash);
 
   const getContract = useCallback(() => {
-    const provider = new ethers.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+    const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
     return new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
   }, []);
 
@@ -304,7 +304,7 @@ const CertificateDetail = () => {
         setCert(onChain);
 
         if (onChain.txHash) {
-          const provider = new ethers.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+          const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
           const [receipt, block] = await Promise.all([
             provider.getTransactionReceipt(onChain.txHash),
             provider.getBlock(onChain.blockNumber),
