@@ -39,7 +39,8 @@ const ABI_WITH_EVENTS = [
         { "internalType": "string",  "name": "ipfsHash",  "type": "string"  },
         { "internalType": "uint256", "name": "issueDate", "type": "uint256" },
         { "internalType": "address", "name": "issuer",    "type": "address" },
-        { "internalType": "bool",    "name": "isValid",   "type": "bool"    }
+        { "internalType": "bool",    "name": "isValid",   "type": "bool"    },
+        { "internalType": "bool",    "name": "isEdited",  "type": "bool"    }
       ],
       "internalType": "struct CertificateVerification.Certificate",
       "name": "", "type": "tuple"
