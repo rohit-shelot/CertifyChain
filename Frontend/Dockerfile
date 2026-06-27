@@ -1,33 +1,23 @@
-# Stage 1: Build the Vite app
-FROM node:22-alpine AS build
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
-# Render passes environment variables as ARGs to Docker
 ARG VITE_CONTRACT_ADDRESS
-ARG VITE_PINATA_JWT
 ARG VITE_SEPOLIA_RPC
+ARG VITE_API_BASE_URL
 
-# Set them as ENV so Vite can read them during the build step
 ENV VITE_CONTRACT_ADDRESS=$VITE_CONTRACT_ADDRESS
-ENV VITE_PINATA_JWT=$VITE_PINATA_JWT
 ENV VITE_SEPOLIA_RPC=$VITE_SEPOLIA_RPC
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 COPY package*.json ./
-
-RUN npm install
+RUN npm ci
 
 COPY . .
-
 RUN npm run build
 
-# Stage 2: Serve with nginx
-FROM nginx:alpine
-
+FROM nginx:1.25-alpine
 COPY --from=build /app/dist /usr/share/nginx/html
-
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-
 EXPOSE 80
-
 CMD ["nginx", "-g", "daemon off;"]
