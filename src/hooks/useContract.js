@@ -9,6 +9,7 @@ import {
   generateCertHash,
   queryFilterChunked,
   getReadOnlyProvider,
+  withProviderRetry,
 } from "../utils/ethers";
 import { uploadToIPFS } from "../utils/pinata";
 import { useWallet } from "../context/WalletContext";
@@ -88,7 +89,7 @@ export const useContract = () => {
     try {
       const contract = getReadOnlyContract();
 
-      const data = await contract.verifyCertificate(certHash);
+      const data = await withProviderRetry(() => contract.verifyCertificate(certHash));
 
       const name      = data[0];
       const course    = data[1];
@@ -200,7 +201,7 @@ export const useContract = () => {
     try {
       const contract = getReadOnlyContract();
 
-      const result = await contract.authorizedIssuers(address);
+      const result = await withProviderRetry(() => contract.authorizedIssuers(address));
 
       console.log("CHECK →", address, result);
 
@@ -216,7 +217,7 @@ export const useContract = () => {
     try {
       const contract = getReadOnlyContract();
 
-      const ownerAddr = await contract.owner();
+      const ownerAddr = await withProviderRetry(() => contract.owner());
 
       console.log("OWNER CHECK →", address, ownerAddr);
 
@@ -231,7 +232,7 @@ export const useContract = () => {
   const checkExists = useCallback(async (certHash) => {
     try {
       const contract = getReadOnlyContract();
-      const data = await contract.verifyCertificate(certHash);
+      const data = await withProviderRetry(() => contract.verifyCertificate(certHash));
       return (data[0] && data[0] !== "");
     } catch (err) {
       return false;

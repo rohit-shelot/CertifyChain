@@ -10,10 +10,12 @@ let _cachedProvider = null;
 let _cachedProviderIndex = 0;
 
 const FALLBACK_URLS = [
-  "https://rpc.ankr.com/eth_sepolia",
+  SEPOLIA_RPC, // Primary: Infura from .env (VITE_SEPOLIA_RPC)
+  // Free public fallbacks — must support eth_getLogs on old/archive blocks
   "https://sepolia.gateway.tenderly.co",
   "https://rpc.sepolia.ethpandaops.io",
-  SEPOLIA_RPC,
+  "https://rpc2.sepolia.org",
+  // Note: publicnode.com removed — returns 403 for archive block queries
 ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i); // unique
 
 export const getReadOnlyProvider = () => {
@@ -37,6 +39,26 @@ export const rotateProvider = () => {
   );
   console.info(`[RPC] Rotated to: ${FALLBACK_URLS[_cachedProviderIndex]}`);
   return _cachedProvider;
+};
+
+/**
+ * Wraps a provider-dependent async call with auto-rotation on failure.
+ * Retries up to `maxRetries` times, rotating the RPC provider each attempt.
+ *
+ * Usage: await withProviderRetry(() => contract.owner())
+ */
+export const withProviderRetry = async (fn, maxRetries = FALLBACK_URLS.length - 1) => {
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[RPC] Call failed (attempt ${attempt + 1}), rotating provider:`, err?.message);
+      rotateProvider();
+    }
+  }
+  throw lastErr;
 };
 
 
@@ -200,16 +222,16 @@ export const formatTimestamp = (ms) => {
 
 /**
  * queryFilterChunked — splits a large block range into chunks of `chunkSize`
- * and processes them in parallel batches of `concurrency`.
- * On a chunk failure it automatically rotates to the next RPC provider and retries.
+ * and processes them SEQUENTIALLY to avoid rate-limiting free-tier RPCs.
+ * On failure it waits with exponential backoff, then rotates the RPC provider.
  *
  * @param {ethers.Contract} contract
  * @param {ethers.EventFilter} filter
  * @param {number} fromBlock
  * @param {number|string} toBlock  — pass a number or "latest"
  * @param {ethers.Provider} provider — used to resolve "latest" block number
- * @param {number} chunkSize — blocks per request (default 20000)
- * @param {number} concurrency — max parallel fetches (default 4)
+ * @param {number} chunkSize — blocks per request (default 5000 — safe for free-tier Infura)
+ * @param {number} delayMs  — ms to wait between chunks (default 200)
  */
 export const queryFilterChunked = async (
   contract,
@@ -217,12 +239,12 @@ export const queryFilterChunked = async (
   fromBlock,
   toBlock,
   provider,
-  chunkSize = 20000,
-  concurrency = 4
+  chunkSize = 5000,
+  delayMs = 200
 ) => {
   let endBlock = toBlock;
   if (toBlock === "latest" || typeof toBlock === "string") {
-    endBlock = await provider.getBlockNumber();
+    endBlock = await withProviderRetry(() => provider.getBlockNumber());
   }
 
   // Build all chunk ranges
@@ -233,33 +255,58 @@ export const queryFilterChunked = async (
 
   const results = [];
 
-  // Helper: query one chunk, auto-rotating provider on failure (max 3 retries)
-  const queryChunk = async (s, e, retriesLeft = 3) => {
+  // Returns true if the error is a rate-limit (HTTP 429 / RPC -32005)
+  const isRateLimit = (err) => {
+    const msg = err?.message || "";
+    const info = err?.info || {};
+    if (msg.includes("429") || msg.includes("Too Many")) return true;
+    const body = info?.responseBody || "";
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed?.error?.code === -32005) return true;
+    } catch (_) { /* not JSON */ }
+    // ethers wraps batch errors as arrays in err.value
+    if (Array.isArray(err?.value)) {
+      return err.value.some((v) => v?.error?.code === -32005 || v?.code === -32005);
+    }
+    return false;
+  };
+
+  // Query a single chunk; on failure wait + rotate, then retry (max `maxRetries` times)
+  const queryChunk = async (s, e, attempt = 0, maxRetries = FALLBACK_URLS.length * 2) => {
     try {
       const activeProvider = getReadOnlyProvider();
       const activeContract = contract.connect(activeProvider);
       return await activeContract.queryFilter(filter, s, e);
     } catch (err) {
-      if (retriesLeft > 0) {
-        console.warn(`[queryFilterChunked] chunk failed, rotating provider. (${retriesLeft} retries left):`, err?.message);
-        rotateProvider();
-        return queryChunk(s, e, retriesLeft - 1);
-      }
-      throw err;
+      if (attempt >= maxRetries) throw err;
+
+      const rateLimit = isRateLimit(err);
+      // Exponential backoff: 1s, 2s, 4s … capped at 10s; plain errors get 300ms
+      const waitMs = rateLimit ? Math.min(1000 * 2 ** attempt, 10000) : 300;
+
+      console.warn(
+        `[queryFilterChunked] chunk [${s}-${e}] failed (attempt ${attempt + 1}, ${
+          rateLimit ? "rate-limited" : "error"
+        }, waiting ${waitMs}ms):`,
+        err?.message
+      );
+
+      await new Promise((r) => setTimeout(r, waitMs));
+      rotateProvider();
+      console.info(`[RPC] Rotated to: ${FALLBACK_URLS[_cachedProviderIndex]}`);
+      return queryChunk(s, e, attempt + 1, maxRetries);
     }
   };
 
-  // Process in parallel batches of `concurrency`
-  for (let i = 0; i < ranges.length; i += concurrency) {
-    const batch = ranges.slice(i, i + concurrency);
-    const batchResults = await Promise.allSettled(
-      batch.map(([s, e]) => queryChunk(s, e))
-    );
-    for (const r of batchResults) {
-      if (r.status === "rejected") {
-        throw new Error(r.reason?.message || "RPC query chunk failed after all retries");
-      }
-      results.push(...r.value);
+  // Process SEQUENTIALLY — one chunk at a time to stay within free-tier rate limits
+  for (let i = 0; i < ranges.length; i++) {
+    const [s, e] = ranges[i];
+    const chunkResult = await queryChunk(s, e);
+    results.push(...chunkResult);
+    // Small pause between chunks so we don't burst-hit the RPC
+    if (i < ranges.length - 1) {
+      await new Promise((r) => setTimeout(r, delayMs));
     }
   }
 
