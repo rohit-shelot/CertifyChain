@@ -424,25 +424,10 @@ const Navbar = () => {
         {/* Desktop wallet */}
         <div className="cc-wallet">
           {account ? (
-            <>
-              {accounts.length > 1 && (
-                <select
-                  value={account}
-                  onChange={(e) => setAccount(e.target.value)}
-                  className="cc-select"
-                >
-                  {accounts.map((acc) => (
-                    <option key={acc} value={acc}>
-                      {acc.slice(0, 6)}...{acc.slice(-4)}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <button onClick={disconnect} className="cc-btn-account">
-                <span className="cc-dot" />
-                {shortenAddress(account)}
-              </button>
-            </>
+            <button onClick={disconnect} className="cc-btn-account">
+              <span className="cc-dot" />
+              {shortenAddress(account)}
+            </button>
           ) : (
             <button onClick={connect} disabled={isConnecting} className="cc-btn-connect">
               {isConnecting ? <div className="cc-spinner" /> : "⚡"}
@@ -462,7 +447,7 @@ const Navbar = () => {
           <span className="cc-burger-line" />
         </button>
       </nav>
-
+ 
       {/* Mobile drawer */}
       <div className={`cc-drawer${menuOpen ? " open" : ""}`}>
         <div className="cc-drawer-links">
@@ -479,29 +464,14 @@ const Navbar = () => {
             </NavLink>
           ))}
         </div>
-
+ 
         {/* Mobile wallet */}
         <div className="cc-drawer-wallet">
           {account ? (
-            <>
-              {accounts.length > 1 && (
-                <select
-                  value={account}
-                  onChange={(e) => { setAccount(e.target.value); setMenuOpen(false); }}
-                  className="cc-select cc-select-full"
-                >
-                  {accounts.map((acc) => (
-                    <option key={acc} value={acc}>
-                      {acc.slice(0, 6)}...{acc.slice(-4)}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <button onClick={() => { disconnect(); setMenuOpen(false); }} className="cc-btn-account cc-btn-account-full">
-                <span className="cc-dot" />
-                {shortenAddress(account)}
-              </button>
-            </>
+            <button onClick={() => { disconnect(); setMenuOpen(false); }} className="cc-btn-account cc-btn-account-full">
+              <span className="cc-dot" />
+              {shortenAddress(account)}
+            </button>
           ) : (
             <button onClick={() => { connect(); setMenuOpen(false); }} disabled={isConnecting} className="cc-btn-connect cc-btn-connect-full">
               {isConnecting ? <div className="cc-spinner" /> : "⚡"}
