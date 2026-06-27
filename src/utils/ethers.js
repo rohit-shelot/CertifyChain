@@ -199,8 +199,8 @@ export const queryFilterChunked = async (
   fromBlock,
   toBlock,
   provider,
-  chunkSize = 100000,
-  concurrency = 2
+  chunkSize = 20000,
+  concurrency = 4
 ) => {
   let endBlock = toBlock;
   if (toBlock === "latest" || typeof toBlock === "string") {
