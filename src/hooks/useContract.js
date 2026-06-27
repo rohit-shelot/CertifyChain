@@ -7,7 +7,7 @@ import {
   CONTRACT_DEPLOYMENT_BLOCK,
   SEPOLIA_RPC,
   generateCertHash,
-  queryFilterChunked,
+  cachedQueryFilter,
 } from "../utils/ethers";
 import { uploadToIPFS } from "../utils/pinata";
 import { useWallet } from "../context/WalletContext";
@@ -242,9 +242,9 @@ export const useContract = () => {
       const contract = getReadOnlyContract();
       const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
       const filter = contract.filters.CertificateIssued();
-      const events = await queryFilterChunked(contract, filter, CONTRACT_DEPLOYMENT_BLOCK, "latest", provider);
+      const events = await cachedQueryFilter(contract, filter, CONTRACT_DEPLOYMENT_BLOCK, provider, "certid_check");
       for (let event of events) {
-        const courseStr = event.args[2] || "";
+        const courseStr = event.args?.[2] || event.args?.course || "";
         if (courseStr.includes(`| ID: ${certId}`)) {
           return true;
         }
@@ -261,10 +261,10 @@ export const useContract = () => {
       const contract = getReadOnlyContract();
       const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
       const filter = contract.filters.CertificateIssued();
-      const events = await queryFilterChunked(contract, filter, CONTRACT_DEPLOYMENT_BLOCK, "latest", provider);
+      const events = await cachedQueryFilter(contract, filter, CONTRACT_DEPLOYMENT_BLOCK, provider, "certid_check");
       let maxNum = 0;
       for (const event of events) {
-        const courseStr = event.args[2] || "";
+        const courseStr = event.args?.[2] || event.args?.course || "";
         // Match both "CERT-N" at end and mid-string (| ID: CERT-N)
         const match = courseStr.match(/CERT-(\d+)/);
         if (match) {

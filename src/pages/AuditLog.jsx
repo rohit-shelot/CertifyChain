@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { Card, CardTitle, Badge, Spinner, EmptyState } from "../components/UI";
-import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
-import { formatTimestamp, shortenAddress } from "../utils/ethers";
+import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
+import { formatTimestamp, shortenAddress, cachedQueryFilter } from "../utils/ethers";
+import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import { useWallet } from "../context/WalletContext";
 import { useContract } from "../hooks/useContract";
 
@@ -89,58 +90,62 @@ const AuditLog = () => {
     setLoading(true);
     setError(null);
     try {
-      if (!window.ethereum) throw new Error("MetaMask not found");
-
-      const provider   = new ethers.BrowserProvider(window.ethereum);
+      const provider   = new ethers.JsonRpcProvider(SEPOLIA_RPC);
       const contract   = new ethers.Contract(CONTRACT_ADDRESS, ABI_WITH_EVENTS, provider);
       const fromBlock  = CONTRACT_DEPLOYMENT_BLOCK;
 
-      const issuedFilter  = contract.filters.CertificateIssued();
-      const revokedFilter = contract.filters.CertificateRevoked();
-
+      // Use cached queries for both event types
       const [issuedLogs, revokedLogs] = await Promise.all([
-        contract.queryFilter(issuedFilter,  fromBlock, "latest"),
-        contract.queryFilter(revokedFilter, fromBlock, "latest"),
+        cachedQueryFilter(contract, contract.filters.CertificateIssued(), fromBlock, provider, "audit_issued"),
+        cachedQueryFilter(contract, contract.filters.CertificateRevoked(), fromBlock, provider, "audit_revoked"),
       ]);
 
-      const parseBlock = async (log) => {
-        const block = await provider.getBlock(log.blockNumber);
-        return Number(block.timestamp) * 1000;
+      // Batch getBlock calls — deduplicate across both log sets
+      const allBlockNumbers = [
+        ...issuedLogs.map((l) => l.blockNumber),
+        ...revokedLogs.map((l) => l.blockNumber),
+      ];
+      const blockMap = await batchGetBlocks(allBlockNumbers, provider);
+
+      const getTs = (log) => {
+        const block = blockMap.get(log.blockNumber);
+        return block ? Number(block.timestamp) * 1000 : Date.now();
       };
 
-      const issued = await Promise.all(
-        issuedLogs.map(async (log) => ({
-          type:      "issue",
-          title:     "Certificate Issued",
-          certHash:  log.args.certHash,
-          name:      log.args.name,
-          course:    log.args.course,
-          issuer:    log.args.issuer,
-          timestamp: await parseBlock(log),
-          txHash:    log.transactionHash,
-          blockNum:  log.blockNumber,
-        }))
-      );
+      const issued = issuedLogs.map((log) => ({
+        type:      "issue",
+        title:     "Certificate Issued",
+        certHash:  log.args?.[0] || log.topics?.[1],
+        name:      log.args?.[1] || log.args?.name || "",
+        course:    log.args?.[2] || log.args?.course || "",
+        issuer:    log.args?.[3] || log.args?.issuer || "",
+        timestamp: getTs(log),
+        txHash:    log.transactionHash,
+        blockNum:  log.blockNumber,
+      }));
 
-      const revoked = await Promise.all(
-        revokedLogs.map(async (log) => {
-          let name = "—", course = "—";
-          try {
-            const cert = await contract.verifyCertificate(log.args.certHash);
-            name = cert[0]; course = cert[1];
-          } catch (_) {}
+      // For revoked events, batch verifyCertificate calls via Multicall3
+      let revoked = [];
+      if (revokedLogs.length > 0) {
+        const revokedHashes = revokedLogs.map((l) => l.args?.[0] || l.topics?.[1]);
+        const certDataMap = await batchVerifyCertificates(revokedHashes, provider);
+
+        revoked = revokedLogs.map((log) => {
+          const hash = log.args?.[0] || log.topics?.[1];
+          const certData = certDataMap.get(hash);
           return {
             type:      "revoke",
             title:     "Certificate Revoked",
-            certHash:  log.args.certHash,
-            name, course,
-            revokedBy: log.args.revokedBy,
-            timestamp: await parseBlock(log),
+            certHash:  hash,
+            name:      certData?.name || "\u2014",
+            course:    certData?.course || "\u2014",
+            revokedBy: log.args?.[1] || log.args?.revokedBy || "",
+            timestamp: getTs(log),
             txHash:    log.transactionHash,
             blockNum:  log.blockNumber,
           };
-        })
-      );
+        });
+      }
 
       setEvents([...issued, ...revoked].sort((a, b) => b.blockNum - a.blockNum));
     } catch (err) {

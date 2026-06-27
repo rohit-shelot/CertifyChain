@@ -5,8 +5,9 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardTitle, InputField, PrimaryButton, Badge, Spinner, EmptyState } from "../components/UI";
 import { useContract } from "../hooks/useContract";
 import { useWallet } from "../context/WalletContext";
-import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
-import { shortenAddress, queryFilterChunked } from "../utils/ethers";
+import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
+import { shortenAddress, cachedQueryFilter } from "../utils/ethers";
+import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import toast from "react-hot-toast";
 
 const ABI = [
@@ -376,13 +377,11 @@ const Manage = () => {
   const [editForm, setEditForm]       = useState({ name: "", email: "", course: "", institution: "", grade: "", issueDate: "" });
   const [savingEdit, setSavingEdit]   = useState(false);
 
-  const getContract = useCallback((signer = false) => {
+  const getSignerContract = useCallback(async () => {
     if (!window.ethereum) throw new Error("MetaMask not found");
     const provider = new ethers.BrowserProvider(window.ethereum);
-    if (signer) {
-      return provider.getSigner().then((s) => new ethers.Contract(CONTRACT_ADDRESS, ABI, s));
-    }
-    return Promise.resolve(new ethers.Contract(CONTRACT_ADDRESS, ABI, provider));
+    const signer = await provider.getSigner();
+    return new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
   }, []);
 
   /* Auth check */
@@ -399,39 +398,62 @@ const Manage = () => {
     if (!account) return;
     setLoadingCerts(true);
     try {
-      const contract  = await getContract();
-      const provider  = new ethers.BrowserProvider(window.ethereum);
+      const provider  = new ethers.JsonRpcProvider(SEPOLIA_RPC);
+      const contract  = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
       const fromBlock = CONTRACT_DEPLOYMENT_BLOCK;
 
-      /* Use chunked queries to avoid "out of range" errors on free RPCs */
+      /* Use cached + chunked queries — only fetches delta on subsequent loads */
       const filter = contract.filters.CertificateIssued(null, null, null, account);
-      const logs   = await queryFilterChunked(contract, filter, fromBlock, "latest", provider);
+      const logs   = await cachedQueryFilter(contract, filter, fromBlock, provider, `manage_issued_${account}`);
 
-      const parsed = await Promise.all(
-        logs.map(async (log) => {
-          let isValid = false, isEdited = false, name = log.args.name, course = log.args.course, ipfsHash = "";
-          let rawDate = 0;
-          try {
-            const cert = await contract.verifyCertificate(log.args.certHash);
-            isValid = cert[5];
-            isEdited = cert[6];
-            name = cert[0] || name; course = cert[1] || course; ipfsHash = cert[2];
-            rawDate = Number(cert[3]) * 1000;
-          } catch (_) {}
-          const block = await provider.getBlock(log.blockNumber);
-          if (!rawDate) {
-            rawDate = Number(block.timestamp) * 1000;
-          }
-          return {
-            hash: log.args.certHash, name, course, ipfsHash,
-            issuer: log.args.issuer,
-            date: new Date(rawDate).toLocaleDateString("en-IN"),
-            rawDate,
-            txHash: log.transactionHash, valid: isValid,
-            isEdited: isEdited,
-          };
-        })
-      );
+      if (logs.length === 0) {
+        setCerts([]);
+        setLoadingCerts(false);
+        return;
+      }
+
+      // Batch all verifyCertificate calls via Multicall3
+      const certHashes = logs.map((log) => log.args?.[0] || log.topics?.[1]);
+      const certDataMap = await batchVerifyCertificates(certHashes, provider);
+
+      // Batch all getBlock calls — deduplicate
+      const blockNumbers = logs.map((log) => log.blockNumber);
+      const blockMap = await batchGetBlocks(blockNumbers, provider);
+
+      const parsed = logs.map((log) => {
+        const hash = log.args?.[0] || log.topics?.[1];
+        let name = log.args?.[1] || log.args?.name || "";
+        let course = log.args?.[2] || log.args?.course || "";
+        let ipfsHash = "";
+        let rawDate = 0;
+        let isValid = false;
+        let isEdited = false;
+
+        const certData = certDataMap.get(hash);
+        if (certData) {
+          isValid = certData.isValid;
+          isEdited = certData.isEdited;
+          name = certData.name || name;
+          course = certData.course || course;
+          ipfsHash = certData.ipfsHash;
+          rawDate = Number(certData.issueDate) * 1000;
+        }
+
+        if (!rawDate) {
+          const block = blockMap.get(log.blockNumber);
+          rawDate = block ? Number(block.timestamp) * 1000 : Date.now();
+        }
+
+        return {
+          hash, name, course, ipfsHash,
+          issuer: log.args?.[3] || log.args?.issuer || "",
+          date: new Date(rawDate).toLocaleDateString("en-IN"),
+          rawDate,
+          txHash: log.transactionHash,
+          valid: isValid,
+          isEdited: isEdited,
+        };
+      });
 
       const map = new Map();
       parsed.forEach((c) => map.set(c.hash, c));
@@ -439,7 +461,7 @@ const Manage = () => {
     } catch (err) {
       toast.error("Failed to load certificates: " + err.message);
     } finally { setLoadingCerts(false); }
-  }, [account, getContract]);
+  }, [account]);
 
   const handleOpenEdit = (c) => {
     let rawCourse = c.course;
@@ -495,7 +517,7 @@ const Manage = () => {
     if (!account) { toast.error("Connect wallet first"); return; }
     setRevoking(hash);
     try {
-      const contract = await getContract(true);
+      const contract = await getSignerContract();
       const tx = await contract.revokeCertificate(hash);
       toast.loading("Waiting for confirmation...", { id: "revoke" });
       await tx.wait();

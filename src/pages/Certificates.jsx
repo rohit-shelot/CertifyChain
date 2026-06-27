@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
 import { Card, Spinner, EmptyState, Badge } from "../components/UI";
-import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
-import { shortenAddress } from "../utils/ethers";
+import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
+import { shortenAddress, cachedQueryFilter } from "../utils/ethers";
+import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import { useWallet } from "../context/WalletContext";
 import { useContract } from "../hooks/useContract";
 import toast from "react-hot-toast";
@@ -97,66 +98,81 @@ const Certificates = () => {
   }, [account, checkOwner]);
 
   // ── Load certs (only when registered) ───────────────────────────────────────
-  const getContract = useCallback(() => {
-    if (!window.ethereum) throw new Error("MetaMask not found");
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    return Promise.resolve(new ethers.Contract(CONTRACT_ADDRESS, ABI, provider));
-  }, []);
-
   const loadCerts = useCallback(async () => {
     setLoading(true);
     try {
-      const contract  = await getContract();
-      const provider  = new ethers.BrowserProvider(window.ethereum);
+      const provider  = new ethers.JsonRpcProvider(SEPOLIA_RPC);
+      const contract  = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
       const fromBlock = CONTRACT_DEPLOYMENT_BLOCK;
-      const logs      = await contract.queryFilter(
-        contract.filters.CertificateIssued(), fromBlock, "latest"
+
+      // Use cached query — only fetches delta on subsequent loads
+      const logs = await cachedQueryFilter(
+        contract,
+        contract.filters.CertificateIssued(),
+        fromBlock,
+        provider,
+        "certificates_issued"
       );
 
-      const parsed = await Promise.all(
-        logs.map(async (log) => {
-          let isValid   = false;
-          let isEdited  = false;
-          let name      = log.args.name;
-          let course    = log.args.course;
-          let ipfsHash  = "";
-          let issueDate = null;
+      if (logs.length === 0) {
+        setCerts([]);
+        setLoading(false);
+        return;
+      }
 
-          try {
-            const cert = await contract.verifyCertificate(log.args.certHash);
-            isValid   = cert[5];
-            isEdited  = cert[6];
-            name      = cert[0] || name;
-            course    = cert[1] || course;
-            ipfsHash  = cert[2];
-            issueDate = cert[3];
-          } catch (_) {}
+      // Batch all verifyCertificate calls into a single Multicall3 RPC request
+      const certHashes = logs.map((log) => log.args?.[0] || log.topics?.[1]);
+      const certDataMap = await batchVerifyCertificates(certHashes, provider);
 
-          let certId = null;
-          if (course && course.includes(" | ID: ")) {
-            const parts = course.split(" | ID: ");
-            course = parts[0];
-            certId = parts[1];
-          }
+      // Batch all getBlock calls — deduplicate by block number
+      const blockNumbers = logs.map((log) => log.blockNumber);
+      const blockMap = await batchGetBlocks(blockNumbers, provider);
 
-          const block = await provider.getBlock(log.blockNumber);
-          const ts    = issueDate
-            ? Number(issueDate) * 1000
-            : Number(block.timestamp) * 1000;
+      const parsed = logs.map((log) => {
+        const hash = log.args?.[0] || log.topics?.[1];
+        let name      = log.args?.[1] || log.args?.name || "";
+        let course    = log.args?.[2] || log.args?.course || "";
+        let ipfsHash  = "";
+        let issueDate = null;
+        let isValid   = false;
+        let isEdited  = false;
 
-          return {
-            hash:        log.args.certHash,
-            name, course, ipfsHash, certId,
-            issuer:      log.args.issuer,
-            date:        new Date(ts).toLocaleDateString("en-IN"),
-            dateRaw:     ts,
-            txHash:      log.transactionHash,
-            blockNumber: log.blockNumber,
-            valid:       isValid,
-            isEdited:    isEdited,
-          };
-        })
-      );
+        const certData = certDataMap.get(hash);
+        if (certData) {
+          isValid   = certData.isValid;
+          isEdited  = certData.isEdited;
+          name      = certData.name || name;
+          course    = certData.course || course;
+          ipfsHash  = certData.ipfsHash;
+          issueDate = certData.issueDate;
+        }
+
+        let certId = null;
+        if (course && course.includes(" | ID: ")) {
+          const parts = course.split(" | ID: ");
+          course = parts[0];
+          certId = parts[1];
+        }
+
+        const block = blockMap.get(log.blockNumber);
+        const ts = issueDate
+          ? Number(issueDate) * 1000
+          : block
+          ? Number(block.timestamp) * 1000
+          : Date.now();
+
+        return {
+          hash,
+          name, course, ipfsHash, certId,
+          issuer:      log.args?.[3] || log.args?.issuer || "",
+          date:        new Date(ts).toLocaleDateString("en-IN"),
+          dateRaw:     ts,
+          txHash:      log.transactionHash,
+          blockNumber: log.blockNumber,
+          valid:       isValid,
+          isEdited:    isEdited,
+        };
+      });
 
       const map = new Map();
       parsed.forEach((c) => map.set(c.hash, c));
@@ -166,7 +182,7 @@ const Certificates = () => {
     } finally {
       setLoading(false);
     }
-  }, [getContract]);
+  }, []);
 
   useEffect(() => {
     if (isOwner) loadCerts();
