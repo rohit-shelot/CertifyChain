@@ -3,6 +3,24 @@ export { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC 
 import { ethers } from "ethers";
 import { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC, SEPOLIA_CHAIN_ID } from "./contractConfig";
 
+export const getReadOnlyProvider = () => {
+  const urls = [
+    "https://rpc.ankr.com/eth_sepolia",
+    "https://sepolia.gateway.tenderly.co",
+    "https://rpc.sepolia.ethpandaops.io",
+    SEPOLIA_RPC
+  ].filter(Boolean);
+
+  const uniqueUrls = [...new Set(urls)];
+
+  if (uniqueUrls.length === 1) {
+    return new ethers.JsonRpcProvider(uniqueUrls[0], 11155111, { staticNetwork: true });
+  }
+
+  const providers = uniqueUrls.map(url => new ethers.JsonRpcProvider(url, 11155111, { staticNetwork: true }));
+  return new ethers.FallbackProvider(providers);
+};
+
 
 
 export const getProvider = () => {

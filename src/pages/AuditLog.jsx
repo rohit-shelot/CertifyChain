@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { Card, CardTitle, Badge, Spinner, EmptyState } from "../components/UI";
 import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
-import { formatTimestamp, shortenAddress, queryFilterChunked } from "../utils/ethers";
+import { formatTimestamp, shortenAddress, queryFilterChunked, getReadOnlyProvider } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import { useWallet } from "../context/WalletContext";
 import { useContract } from "../hooks/useContract";
@@ -90,7 +90,7 @@ const AuditLog = () => {
     setLoading(true);
     setError(null);
     try {
-      const provider   = new ethers.JsonRpcProvider(SEPOLIA_RPC);
+      const provider   = getReadOnlyProvider();
       const contract   = new ethers.Contract(CONTRACT_ADDRESS, ABI_WITH_EVENTS, provider);
       const fromBlock  = CONTRACT_DEPLOYMENT_BLOCK;
 

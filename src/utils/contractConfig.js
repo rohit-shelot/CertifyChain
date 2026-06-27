@@ -404,4 +404,4 @@ export const IPFS_GATEWAY    = "https://gateway.pinata.cloud/ipfs/";
 export const PINATA_JWT = import.meta.env.VITE_PINATA_JWT;
 
 export const CONTRACT_DEPLOYMENT_BLOCK = 10870000;
-export const SEPOLIA_RPC = import.meta.env.VITE_SEPOLIA_RPC || "https://ethereum-sepolia-rpc.publicnode.com";
+export const SEPOLIA_RPC = import.meta.env.VITE_SEPOLIA_RPC || "https://rpc.ankr.com/eth_sepolia";

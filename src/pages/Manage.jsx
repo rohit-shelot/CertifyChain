@@ -6,7 +6,7 @@ import { Card, CardTitle, InputField, PrimaryButton, Badge, Spinner, EmptyState 
 import { useContract } from "../hooks/useContract";
 import { useWallet } from "../context/WalletContext";
 import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
-import { shortenAddress, queryFilterChunked } from "../utils/ethers";
+import { shortenAddress, queryFilterChunked, getReadOnlyProvider } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import toast from "react-hot-toast";
 
@@ -398,7 +398,7 @@ const Manage = () => {
     if (!account) return;
     setLoadingCerts(true);
     try {
-      const provider  = new ethers.JsonRpcProvider(SEPOLIA_RPC);
+      const provider  = getReadOnlyProvider();
       const contract  = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
       const fromBlock = CONTRACT_DEPLOYMENT_BLOCK;
 

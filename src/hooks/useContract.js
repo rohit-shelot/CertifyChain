@@ -8,6 +8,7 @@ import {
   SEPOLIA_RPC,
   generateCertHash,
   queryFilterChunked,
+  getReadOnlyProvider,
 } from "../utils/ethers";
 import { uploadToIPFS } from "../utils/pinata";
 import { useWallet } from "../context/WalletContext";
@@ -25,7 +26,7 @@ export const useContract = () => {
   };
 
   const getReadOnlyContract = () => {
-    const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
+    const provider = getReadOnlyProvider();
     return new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
   };
 
@@ -240,7 +241,7 @@ export const useContract = () => {
   const checkCertIdExists = useCallback(async (certId) => {
     try {
       const contract = getReadOnlyContract();
-      const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
+      const provider = getReadOnlyProvider();
       const filter = contract.filters.CertificateIssued();
       const events = await queryFilterChunked(contract, filter, CONTRACT_DEPLOYMENT_BLOCK, "latest", provider);
       for (let event of events) {
@@ -259,7 +260,7 @@ export const useContract = () => {
   const getNextCertId = useCallback(async () => {
     try {
       const contract = getReadOnlyContract();
-      const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
+      const provider = getReadOnlyProvider();
       const filter = contract.filters.CertificateIssued();
       const events = await queryFilterChunked(contract, filter, CONTRACT_DEPLOYMENT_BLOCK, "latest", provider);
       let maxNum = 0;
