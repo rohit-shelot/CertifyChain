@@ -3,22 +3,40 @@ export { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC 
 import { ethers } from "ethers";
 import { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC, SEPOLIA_CHAIN_ID } from "./contractConfig";
 
+// Sequential provider — tries each URL one at a time until one succeeds.
+// Unlike FallbackProvider which fires ALL providers in parallel (causing 4× requests),
+// this only uses one provider at a time and only falls over if it throws.
+let _cachedProvider = null;
+let _cachedProviderIndex = 0;
+
+const FALLBACK_URLS = [
+  "https://rpc.ankr.com/eth_sepolia",
+  "https://sepolia.gateway.tenderly.co",
+  "https://rpc.sepolia.ethpandaops.io",
+  SEPOLIA_RPC,
+].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i); // unique
+
 export const getReadOnlyProvider = () => {
-  const urls = [
-    "https://rpc.ankr.com/eth_sepolia",
-    "https://sepolia.gateway.tenderly.co",
-    "https://rpc.sepolia.ethpandaops.io",
-    SEPOLIA_RPC
-  ].filter(Boolean);
+  // Return the cached active provider so we don't recreate on every call
+  if (_cachedProvider) return _cachedProvider;
+  _cachedProvider = new ethers.JsonRpcProvider(
+    FALLBACK_URLS[_cachedProviderIndex],
+    11155111,
+    { staticNetwork: true }
+  );
+  return _cachedProvider;
+};
 
-  const uniqueUrls = [...new Set(urls)];
-
-  if (uniqueUrls.length === 1) {
-    return new ethers.JsonRpcProvider(uniqueUrls[0], 11155111, { staticNetwork: true });
-  }
-
-  const providers = uniqueUrls.map(url => new ethers.JsonRpcProvider(url, 11155111, { staticNetwork: true }));
-  return new ethers.FallbackProvider(providers);
+// Called when the current provider fails — rotates to the next URL
+export const rotateProvider = () => {
+  _cachedProviderIndex = (_cachedProviderIndex + 1) % FALLBACK_URLS.length;
+  _cachedProvider = new ethers.JsonRpcProvider(
+    FALLBACK_URLS[_cachedProviderIndex],
+    11155111,
+    { staticNetwork: true }
+  );
+  console.info(`[RPC] Rotated to: ${FALLBACK_URLS[_cachedProviderIndex]}`);
+  return _cachedProvider;
 };
 
 
@@ -182,16 +200,16 @@ export const formatTimestamp = (ms) => {
 
 /**
  * queryFilterChunked — splits a large block range into chunks of `chunkSize`
- * and runs them in parallel batches of `concurrency` to maximise throughput
- * on free RPC endpoints.
+ * and processes them in parallel batches of `concurrency`.
+ * On a chunk failure it automatically rotates to the next RPC provider and retries.
  *
  * @param {ethers.Contract} contract
  * @param {ethers.EventFilter} filter
  * @param {number} fromBlock
  * @param {number|string} toBlock  — pass a number or "latest"
- * @param {ethers.Provider} provider — needed when toBlock === "latest"
- * @param {number} chunkSize — blocks per request (default 100000)
- * @param {number} concurrency — max parallel fetches (default 2)
+ * @param {ethers.Provider} provider — used to resolve "latest" block number
+ * @param {number} chunkSize — blocks per request (default 20000)
+ * @param {number} concurrency — max parallel fetches (default 4)
  */
 export const queryFilterChunked = async (
   contract,
@@ -215,16 +233,31 @@ export const queryFilterChunked = async (
 
   const results = [];
 
+  // Helper: query one chunk, auto-rotating provider on failure (max 3 retries)
+  const queryChunk = async (s, e, retriesLeft = 3) => {
+    try {
+      const activeProvider = getReadOnlyProvider();
+      const activeContract = contract.connect(activeProvider);
+      return await activeContract.queryFilter(filter, s, e);
+    } catch (err) {
+      if (retriesLeft > 0) {
+        console.warn(`[queryFilterChunked] chunk failed, rotating provider. (${retriesLeft} retries left):`, err?.message);
+        rotateProvider();
+        return queryChunk(s, e, retriesLeft - 1);
+      }
+      throw err;
+    }
+  };
+
   // Process in parallel batches of `concurrency`
   for (let i = 0; i < ranges.length; i += concurrency) {
     const batch = ranges.slice(i, i + concurrency);
     const batchResults = await Promise.allSettled(
-      batch.map(([s, e]) => contract.queryFilter(filter, s, e))
+      batch.map(([s, e]) => queryChunk(s, e))
     );
     for (const r of batchResults) {
       if (r.status === "rejected") {
-        console.warn("[queryFilterChunked] chunk failed:", r.reason?.message);
-        throw new Error(r.reason?.message || "RPC query chunk failed");
+        throw new Error(r.reason?.message || "RPC query chunk failed after all retries");
       }
       results.push(...r.value);
     }
