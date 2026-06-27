@@ -1,0 +1,45 @@
+services:
+  # ── Backend: Node.js Express Proxy Web Service ──────────────────────────────
+  - type: web
+    name: certchain-backend
+    env: node
+    plan: free
+    rootDir: Backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: PINATA_JWT
+        sync: false # User will set this in Render UI securely
+      - key: FRONTEND_ORIGIN
+        sync: false # User will set this to the frontend static site URL
+
+  # ── Frontend: Vite React Static Site (CDN Optimized) ────────────────────────
+  - type: static
+    name: certchain-frontend
+    env: static
+    plan: free
+    rootDir: Frontend
+    buildCommand: npm install && npm run build
+    publishDir: dist
+    headers:
+      - path: /*
+        headers:
+          - key: Cache-Control
+            value: public, max-age=31536000, immutable
+    routes:
+      # Prevents 404 errors when refreshing client-side React routes
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: certchain-backend
+          property: host
+      - key: VITE_CONTRACT_ADDRESS
+        value: 0xC1A3924e1C743bC6309d20a06725c6ACAB44eAeD
+      - key: VITE_SEPOLIA_RPC
+        value: https://ethereum-sepolia-rpc.publicnode.com
