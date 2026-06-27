@@ -6,7 +6,7 @@ import { Card, CardTitle, InputField, PrimaryButton, Badge, Spinner, EmptyState 
 import { useContract } from "../hooks/useContract";
 import { useWallet } from "../context/WalletContext";
 import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
-import { shortenAddress, cachedQueryFilter } from "../utils/ethers";
+import { shortenAddress, queryFilterChunked } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import toast from "react-hot-toast";
 
@@ -402,9 +402,9 @@ const Manage = () => {
       const contract  = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
       const fromBlock = CONTRACT_DEPLOYMENT_BLOCK;
 
-      /* Use cached + chunked queries — only fetches delta on subsequent loads */
+      /* Fetch certificates issued by this account */
       const filter = contract.filters.CertificateIssued(null, null, null, account);
-      const logs   = await cachedQueryFilter(contract, filter, fromBlock, provider, `manage_issued_${account}`);
+      const logs   = await queryFilterChunked(contract, filter, fromBlock, "latest", provider);
 
       if (logs.length === 0) {
         setCerts([]);

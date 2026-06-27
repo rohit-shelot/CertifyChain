@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
 import { Card, Spinner, EmptyState, Badge } from "../components/UI";
 import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
-import { shortenAddress, cachedQueryFilter } from "../utils/ethers";
+import { shortenAddress, queryFilterChunked } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import { useWallet } from "../context/WalletContext";
 import { useContract } from "../hooks/useContract";
@@ -105,13 +105,13 @@ const Certificates = () => {
       const contract  = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
       const fromBlock = CONTRACT_DEPLOYMENT_BLOCK;
 
-      // Use cached query — only fetches delta on subsequent loads
-      const logs = await cachedQueryFilter(
+      // Fetch all CertificateIssued events from the blockchain
+      const logs = await queryFilterChunked(
         contract,
         contract.filters.CertificateIssued(),
         fromBlock,
-        provider,
-        "certificates_issued"
+        "latest",
+        provider
       );
 
       if (logs.length === 0) {

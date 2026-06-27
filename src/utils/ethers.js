@@ -162,22 +162,18 @@ export const formatTimestamp = (ms) => {
   });
 };
 
-import { loadCachedEvents, saveCachedEvents } from "./eventCache";
-
 /**
  * queryFilterChunked — splits a large block range into chunks of `chunkSize`
  * and runs them in parallel batches of `concurrency` to maximise throughput
  * on free RPC endpoints.
- *
- * Defaults: 50 000 blocks per chunk, 6 concurrent requests.
  *
  * @param {ethers.Contract} contract
  * @param {ethers.EventFilter} filter
  * @param {number} fromBlock
  * @param {number|string} toBlock  — pass a number or "latest"
  * @param {ethers.Provider} provider — needed when toBlock === "latest"
- * @param {number} chunkSize — blocks per request (default 50000)
- * @param {number} concurrency — max parallel fetches (default 6)
+ * @param {number} chunkSize — blocks per request (default 100000)
+ * @param {number} concurrency — max parallel fetches (default 2)
  */
 export const queryFilterChunked = async (
   contract,
@@ -185,8 +181,8 @@ export const queryFilterChunked = async (
   fromBlock,
   toBlock,
   provider,
-  chunkSize = 50000,
-  concurrency = 6
+  chunkSize = 100000,
+  concurrency = 2
 ) => {
   let endBlock = toBlock;
   if (toBlock === "latest" || typeof toBlock === "string") {
@@ -208,58 +204,13 @@ export const queryFilterChunked = async (
       batch.map(([s, e]) => contract.queryFilter(filter, s, e))
     );
     for (const r of batchResults) {
-      if (r.status === "fulfilled") {
-        results.push(...r.value);
+      if (r.status === "rejected") {
+        console.warn("[queryFilterChunked] chunk failed:", r.reason?.message);
+        throw new Error(r.reason?.message || "RPC query chunk failed");
       }
+      results.push(...r.value);
     }
   }
 
   return results;
-};
-
-/**
- * cachedQueryFilter — like queryFilterChunked but with sessionStorage caching.
- * On the first call it scans the full range. On subsequent calls it only
- * fetches the delta (blocks since last cache).
- *
- * @param {ethers.Contract} contract
- * @param {ethers.EventFilter} filter
- * @param {number} deploymentBlock
- * @param {ethers.Provider} provider
- * @param {string} cacheKey — unique cache key for this query
- * @returns {Promise<object[]>} array of event log objects
- */
-export const cachedQueryFilter = async (
-  contract,
-  filter,
-  deploymentBlock,
-  provider,
-  cacheKey
-) => {
-  const currentBlock = await provider.getBlockNumber();
-  const cached = loadCachedEvents(cacheKey);
-
-  let allEvents = [];
-
-  if (cached && cached.lastBlock >= deploymentBlock) {
-    // We have cached data — only fetch the delta
-    allEvents = [...cached.events];
-    const deltaStart = cached.lastBlock + 1;
-    if (deltaStart <= currentBlock) {
-      const newEvents = await queryFilterChunked(
-        contract, filter, deltaStart, currentBlock, provider
-      );
-      allEvents.push(...newEvents);
-    }
-  } else {
-    // No cache — full scan
-    allEvents = await queryFilterChunked(
-      contract, filter, deploymentBlock, currentBlock, provider
-    );
-  }
-
-  // Persist to sessionStorage
-  saveCachedEvents(cacheKey, currentBlock, allEvents);
-
-  return allEvents;
 };

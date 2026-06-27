@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { Card, CardTitle, Badge, Spinner, EmptyState } from "../components/UI";
 import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
-import { formatTimestamp, shortenAddress, cachedQueryFilter } from "../utils/ethers";
+import { formatTimestamp, shortenAddress, queryFilterChunked } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import { useWallet } from "../context/WalletContext";
 import { useContract } from "../hooks/useContract";
@@ -94,10 +94,10 @@ const AuditLog = () => {
       const contract   = new ethers.Contract(CONTRACT_ADDRESS, ABI_WITH_EVENTS, provider);
       const fromBlock  = CONTRACT_DEPLOYMENT_BLOCK;
 
-      // Use cached queries for both event types
+      // Fetch both event types from the blockchain
       const [issuedLogs, revokedLogs] = await Promise.all([
-        cachedQueryFilter(contract, contract.filters.CertificateIssued(), fromBlock, provider, "audit_issued"),
-        cachedQueryFilter(contract, contract.filters.CertificateRevoked(), fromBlock, provider, "audit_revoked"),
+        queryFilterChunked(contract, contract.filters.CertificateIssued(), fromBlock, "latest", provider),
+        queryFilterChunked(contract, contract.filters.CertificateRevoked(), fromBlock, "latest", provider),
       ]);
 
       // Batch getBlock calls — deduplicate across both log sets
