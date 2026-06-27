@@ -3,36 +3,20 @@ const cors     = require("cors");
 const multer   = require("multer");
 const axios    = require("axios");
 const FormData = require("form-data");
+const path     = require("path");
 require("dotenv").config();
 
 const app = express();
 
-const PORT            = process.env.PORT || 3001;
-const PINATA_JWT      = process.env.PINATA_JWT;
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN;
+const PORT       = process.env.PORT || 3001;
+const PINATA_JWT = process.env.PINATA_JWT;
 
 if (!PINATA_JWT) {
   console.error("❌  PINATA_JWT is not set in .env — the proxy cannot authenticate to Pinata.");
   process.exit(1);
 }
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  FRONTEND_ORIGIN
-].filter(Boolean);
-
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      return callback(null, true);
-    } else {
-      return callback(new Error("Not allowed by CORS"));
-    }
-  },
-  methods: ["POST", "GET", "OPTIONS"],
-  allowedHeaders: ["Content-Type"],
-}));
+app.use(cors());
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -87,7 +71,12 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
+const publicDir = path.join(__dirname, "public");
+app.use(express.static(publicDir));
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
+
 app.listen(PORT, () => {
-  console.log(`✅  CertChain backend proxy running on http://localhost:${PORT}`);
-  console.log(`   Accepting requests from: ${FRONTEND_ORIGIN}`);
+  console.log(`✅  CertChain running on http://localhost:${PORT}`);
 });

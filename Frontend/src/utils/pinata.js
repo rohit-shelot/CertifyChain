@@ -1,14 +1,7 @@
 import axios from "axios";
 import { IPFS_GATEWAY } from "./contractConfig";
 
-/**
- * Base URL of the backend proxy server.
- * The proxy holds the Pinata JWT — it never appears in the browser bundle.
- *
- * In development  → http://localhost:3001  (Backend/server.js running locally)
- * In production   → set VITE_API_BASE_URL to your deployed backend URL
- */
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 /**
  * Upload a file to IPFS via the backend proxy (which forwards to Pinata).
