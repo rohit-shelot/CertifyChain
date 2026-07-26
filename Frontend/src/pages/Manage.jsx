@@ -6,7 +6,7 @@ import { Card, CardTitle, InputField, PrimaryButton, Badge, Spinner, EmptyState 
 import { useContract } from "../hooks/useContract";
 import { useWallet } from "../context/WalletContext";
 import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
-import { shortenAddress, queryFilterChunked, getReadOnlyProvider } from "../utils/ethers";
+import { shortenAddress, queryFilterChunked, getReadOnlyProvider, getFriendlyErrorMessage } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import { loadCachedEvents, saveCachedEvents, clearCachedEvents } from "../utils/eventCache";
 import toast from "react-hot-toast";
@@ -490,7 +490,7 @@ const Manage = () => {
       saveCachedEvents(cacheKey, currentBlock, final);
       setCerts([...final].reverse());
     } catch (err) {
-      toast.error("Failed to load certificates: " + err.message);
+      toast.error(getFriendlyErrorMessage(err, "Failed to load certificates"));
     } finally { setLoadingCerts(false); }
   }, [account]);
 

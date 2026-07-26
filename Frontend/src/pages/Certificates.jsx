@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
 import { Card, Spinner, EmptyState, Badge } from "../components/UI";
 import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
-import { shortenAddress, queryFilterChunked, getReadOnlyProvider } from "../utils/ethers";
+import { shortenAddress, queryFilterChunked, getReadOnlyProvider, getFriendlyErrorMessage } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import { loadCachedEvents, saveCachedEvents, clearCachedEvents } from "../utils/eventCache";
 import { useWallet } from "../context/WalletContext";
@@ -218,7 +218,7 @@ const Certificates = () => {
       saveCachedEvents(CACHE_KEY, currentBlock, final);
       setCerts([...final].reverse());
     } catch (err) {
-      toast.error("Failed to load certificates: " + err.message);
+      toast.error(getFriendlyErrorMessage(err, "Failed to load certificates"));
     } finally {
       setLoading(false);
     }

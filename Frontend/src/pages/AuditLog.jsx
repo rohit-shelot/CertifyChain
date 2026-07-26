@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { Card, CardTitle, Badge, Spinner, EmptyState } from "../components/UI";
 import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
-import { formatTimestamp, shortenAddress, queryFilterChunked, getReadOnlyProvider } from "../utils/ethers";
+import { formatTimestamp, shortenAddress, queryFilterChunked, getReadOnlyProvider, getFriendlyErrorMessage } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import { loadCachedEvents, saveCachedEvents, clearCachedEvents } from "../utils/eventCache";
 import { useWallet } from "../context/WalletContext";
@@ -189,7 +189,7 @@ const AuditLog = () => {
 
       setEvents([...mergedIssued, ...mergedRevoked].sort((a, b) => b.blockNum - a.blockNum));
     } catch (err) {
-      setError(err.message || "Failed to fetch events");
+      setError(getFriendlyErrorMessage(err, "Failed to fetch audit log events"));
     } finally {
       setLoading(false);
     }

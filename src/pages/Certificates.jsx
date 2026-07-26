@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
 import { Card, Spinner, EmptyState, Badge } from "../components/UI";
 import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
-import { shortenAddress, queryFilterChunked, getReadOnlyProvider } from "../utils/ethers";
+import { shortenAddress, queryFilterChunked, getReadOnlyProvider, getFriendlyErrorMessage } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import { useWallet } from "../context/WalletContext";
 import { useContract } from "../hooks/useContract";
@@ -174,7 +174,7 @@ const Certificates = () => {
       parsed.forEach((c) => map.set(c.hash, c));
       setCerts([...map.values()].reverse());
     } catch (err) {
-      toast.error("Failed to load certificates: " + err.message);
+      toast.error(getFriendlyErrorMessage(err, "Failed to load certificates"));
     } finally {
       setLoading(false);
     }

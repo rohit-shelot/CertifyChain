@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { Card, CardTitle, Badge, Spinner, EmptyState } from "../components/UI";
 import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
-import { formatTimestamp, shortenAddress, queryFilterChunked, getReadOnlyProvider } from "../utils/ethers";
+import { formatTimestamp, shortenAddress, queryFilterChunked, getReadOnlyProvider, getFriendlyErrorMessage } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
 import { useWallet } from "../context/WalletContext";
 import { useContract } from "../hooks/useContract";
@@ -141,7 +141,7 @@ const AuditLog = () => {
 
       setEvents([...issued, ...revoked].sort((a, b) => b.blockNum - a.blockNum));
     } catch (err) {
-      setError(err.message || "Failed to fetch events");
+      setError(getFriendlyErrorMessage(err, "Failed to fetch audit log events"));
     } finally {
       setLoading(false);
     }
