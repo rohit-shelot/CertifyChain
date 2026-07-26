@@ -10,12 +10,12 @@ let _cachedProvider = null;
 let _cachedProviderIndex = 0;
 
 const FALLBACK_URLS = [
-  SEPOLIA_RPC, // Primary: Infura from .env (VITE_SEPOLIA_RPC)
-  // Free public fallbacks — must support eth_getLogs on old/archive blocks
+  SEPOLIA_RPC, // Primary: from .env (VITE_SEPOLIA_RPC)
+  "https://ethereum-sepolia-rpc.publicnode.com",
+  "https://rpc.ankr.com/eth_sepolia",
   "https://sepolia.gateway.tenderly.co",
   "https://rpc.sepolia.ethpandaops.io",
   "https://rpc2.sepolia.org",
-  // Note: publicnode.com removed — returns 403 for archive block queries
 ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i); // unique
 
 export const getReadOnlyProvider = () => {
@@ -246,6 +246,8 @@ export const queryFilterChunked = async (
   if (toBlock === "latest" || typeof toBlock === "string") {
     endBlock = await withProviderRetry(() => provider.getBlockNumber());
   }
+
+  if (fromBlock > endBlock) return [];
 
   // Build all chunk ranges
   const ranges = [];

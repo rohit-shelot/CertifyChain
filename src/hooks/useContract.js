@@ -13,6 +13,7 @@ import {
 } from "../utils/ethers";
 import { uploadToIPFS } from "../utils/pinata";
 import { useWallet } from "../context/WalletContext";
+import { loadCachedEvents, saveCachedEvents } from "../utils/eventCache";
 
 export const useContract = () => {
   const { account } = useWallet();
@@ -239,14 +240,37 @@ export const useContract = () => {
     }
   }, []);
 
+  const getIssuedCoursesCached = async () => {
+    const CACHE_KEY = "certissued_all_courses";
+    const cached = loadCachedEvents(CACHE_KEY);
+    const provider = getReadOnlyProvider();
+    const contract = getReadOnlyContract();
+    const currentBlock = await withProviderRetry((p) => p.getBlockNumber());
+
+    let courses = [];
+    let startBlock = CONTRACT_DEPLOYMENT_BLOCK;
+
+    if (cached) {
+      courses = cached.events;
+      if (currentBlock <= cached.lastBlock) {
+        return courses;
+      }
+      startBlock = cached.lastBlock + 1;
+    }
+
+    const filter = contract.filters.CertificateIssued();
+    const newLogs = await queryFilterChunked(contract, filter, startBlock, currentBlock, provider);
+    const newCourses = newLogs.map((log) => log.args?.[2] || log.args?.course || "");
+
+    const allCourses = [...courses, ...newCourses];
+    saveCachedEvents(CACHE_KEY, currentBlock, allCourses);
+    return allCourses;
+  };
+
   const checkCertIdExists = useCallback(async (certId) => {
     try {
-      const contract = getReadOnlyContract();
-      const provider = getReadOnlyProvider();
-      const filter = contract.filters.CertificateIssued();
-      const events = await queryFilterChunked(contract, filter, CONTRACT_DEPLOYMENT_BLOCK, "latest", provider);
-      for (let event of events) {
-        const courseStr = event.args?.[2] || event.args?.course || "";
+      const courses = await getIssuedCoursesCached();
+      for (let courseStr of courses) {
         if (courseStr.includes(`| ID: ${certId}`)) {
           return true;
         }
@@ -260,14 +284,9 @@ export const useContract = () => {
 
   const getNextCertId = useCallback(async () => {
     try {
-      const contract = getReadOnlyContract();
-      const provider = getReadOnlyProvider();
-      const filter = contract.filters.CertificateIssued();
-      const events = await queryFilterChunked(contract, filter, CONTRACT_DEPLOYMENT_BLOCK, "latest", provider);
+      const courses = await getIssuedCoursesCached();
       let maxNum = 0;
-      for (const event of events) {
-        const courseStr = event.args?.[2] || event.args?.course || "";
-        // Match both "CERT-N" at end and mid-string (| ID: CERT-N)
+      for (const courseStr of courses) {
         const match = courseStr.match(/CERT-(\d+)/);
         if (match) {
           const n = parseInt(match[1], 10);

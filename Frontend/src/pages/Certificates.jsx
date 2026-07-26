@@ -103,8 +103,6 @@ const Certificates = () => {
     if (logs.length === 0) return [];
     const certHashes  = logs.map((log) => log.args?.[0] || log.topics?.[1]);
     const certDataMap = await batchVerifyCertificates(certHashes, provider);
-    const blockNumbers = logs.map((log) => log.blockNumber);
-    const blockMap    = await batchGetBlocks(blockNumbers, provider);
 
     const parsed = logs.map((log) => {
       const hash = log.args?.[0] || log.topics?.[1];
@@ -125,9 +123,9 @@ const Certificates = () => {
         course = parts[0]; certId = parts[1];
       }
 
-      const block = blockMap.get(log.blockNumber);
+      const eventTs = log.args?.[4] || log.args?.timestamp;
       const ts = issueDate ? Number(issueDate) * 1000
-               : block    ? Number(block.timestamp) * 1000
+               : eventTs   ? Number(eventTs) * 1000
                : Date.now();
 
       return {

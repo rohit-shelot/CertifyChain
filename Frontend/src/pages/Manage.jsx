@@ -399,8 +399,6 @@ const Manage = () => {
     if (logs.length === 0) return [];
     const certHashes  = logs.map((log) => log.args?.[0] || log.topics?.[1]);
     const certDataMap = await batchVerifyCertificates(certHashes, provider);
-    const blockNumbers = logs.map((log) => log.blockNumber);
-    const blockMap    = await batchGetBlocks(blockNumbers, provider);
 
     return logs.map((log) => {
       const hash = log.args?.[0] || log.topics?.[1];
@@ -416,8 +414,8 @@ const Manage = () => {
       }
 
       if (!rawDate) {
-        const block = blockMap.get(log.blockNumber);
-        rawDate = block ? Number(block.timestamp) * 1000 : Date.now();
+        const eventTs = log.args?.[4] || log.args?.timestamp;
+        rawDate = eventTs ? Number(eventTs) * 1000 : Date.now();
       }
 
       return {

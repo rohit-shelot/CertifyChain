@@ -100,29 +100,20 @@ const AuditLog = () => {
         queryFilterChunked(contract, contract.filters.CertificateRevoked(), fromBlock, "latest", provider),
       ]);
 
-      // Batch getBlock calls — deduplicate across both log sets
-      const allBlockNumbers = [
-        ...issuedLogs.map((l) => l.blockNumber),
-        ...revokedLogs.map((l) => l.blockNumber),
-      ];
-      const blockMap = await batchGetBlocks(allBlockNumbers, provider);
-
-      const getTs = (log) => {
-        const block = blockMap.get(log.blockNumber);
-        return block ? Number(block.timestamp) * 1000 : Date.now();
-      };
-
-      const issued = issuedLogs.map((log) => ({
-        type:      "issue",
-        title:     "Certificate Issued",
-        certHash:  log.args?.[0] || log.topics?.[1],
-        name:      log.args?.[1] || log.args?.name || "",
-        course:    log.args?.[2] || log.args?.course || "",
-        issuer:    log.args?.[3] || log.args?.issuer || "",
-        timestamp: getTs(log),
-        txHash:    log.transactionHash,
-        blockNum:  log.blockNumber,
-      }));
+      const issued = issuedLogs.map((log) => {
+        const ts = log.args?.[4] || log.args?.timestamp;
+        return {
+          type:      "issue",
+          title:     "Certificate Issued",
+          certHash:  log.args?.[0] || log.topics?.[1],
+          name:      log.args?.[1] || log.args?.name || "",
+          course:    log.args?.[2] || log.args?.course || "",
+          issuer:    log.args?.[3] || log.args?.issuer || "",
+          timestamp: ts ? Number(ts) * 1000 : Date.now(),
+          txHash:    log.transactionHash,
+          blockNum:  log.blockNumber,
+        };
+      });
 
       // For revoked events, batch verifyCertificate calls via Multicall3
       let revoked = [];
@@ -133,14 +124,15 @@ const AuditLog = () => {
         revoked = revokedLogs.map((log) => {
           const hash = log.args?.[0] || log.topics?.[1];
           const certData = certDataMap.get(hash);
+          const ts = log.args?.[2] || log.args?.timestamp || (certData?.issueDate ? Number(certData.issueDate) : null);
           return {
             type:      "revoke",
             title:     "Certificate Revoked",
             certHash:  hash,
-            name:      certData?.name || "\u2014",
-            course:    certData?.course || "\u2014",
+            name:      certData?.name || "—",
+            course:    certData?.course || "—",
             revokedBy: log.args?.[1] || log.args?.revokedBy || "",
-            timestamp: getTs(log),
+            timestamp: ts ? Number(ts) * 1000 : Date.now(),
             txHash:    log.transactionHash,
             blockNum:  log.blockNumber,
           };
