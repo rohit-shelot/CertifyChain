@@ -114,6 +114,12 @@ export const rotateProvider = () => {
     _failedRpcCooldowns.set(currentUrl, Date.now() + 60000);
   }
 
+  // IMPORTANT: destroy the old provider before replacing it.
+  // Without this, every rotation leaves the old JsonRpcProvider alive with its
+  // 'close' and 'end' socket listeners attached, triggering MaxListenersExceededWarning.
+  try { _cachedProvider?.destroy(); } catch (_) {}
+  _cachedProvider = null;
+
   let nextIdx = (_cachedProviderIndex + 1) % FALLBACK_URLS.length;
   let attempts = 0;
   while (attempts < FALLBACK_URLS.length) {
@@ -346,8 +352,10 @@ export const queryFilterChunked = async (
   fromBlock,
   toBlock,
   provider,
-  chunkSize = 100000,
-  delayMs = 200
+  // 9999 stays just under Infura's 10 000-block eth_getLogs limit, preventing
+  // recursive binary splitting which would cascade into dozens of requests.
+  chunkSize = 9999,
+  delayMs = 600   // generous pause between chunks to stay under per-second rate limits
 ) => {
   let endBlock = toBlock;
   if (toBlock === "latest" || typeof toBlock === "string") {
@@ -370,21 +378,25 @@ export const queryFilterChunked = async (
 
   const results = [];
 
-  // Returns true if the error is a rate-limit (HTTP 429 / RPC -32005 / BAD_DATA)
-  // Delegates to the module-level isRateLimit which handles all known ethers v6 variants
   const _isRateLimit = (err) => isRateLimit(err);
 
+  // Only fires for genuine "block range too large" responses, NOT rate-limit errors.
+  // Previous broad terms like msg.includes("limit") also matched 429 rate-limit
+  // messages, causing recursive binary splitting and an explosion of requests.
   const isBlockRangeError = (err) => {
+    // Rate-limit errors must never be treated as block-range errors.
+    if (_isRateLimit(err)) return false;
     const msg = (err?.message || "").toLowerCase();
     const info = err?.info || {};
     const body = (info?.responseBody || "").toLowerCase();
     return (
       msg.includes("block range") ||
-      msg.includes("limit") ||
-      msg.includes("exceeded") ||
       msg.includes("too large") ||
-      body.includes("limit") ||
-      body.includes("range")
+      body.includes("block range") ||
+      body.includes("eth_getlogs is limited") ||
+      body.includes("logs query") ||
+      body.includes("query returned more than") ||
+      (body.includes("range") && body.includes("blocks"))
     );
   };
 
@@ -395,7 +407,9 @@ export const queryFilterChunked = async (
       const activeContract = contract.connect(activeProvider);
       return await activeContract.queryFilter(filter, s, e);
     } catch (err) {
-      // If it is a block range limit error, split the range in half and query recursively
+      // If it is a block range limit error, split the range in half and query recursively.
+      // isBlockRangeError already guards against rate-limit errors, so this only
+      // fires for genuine "range too large" responses.
       if (isBlockRangeError(err) && e - s > 100) {
         const mid = Math.floor(s + (e - s) / 2);
         const left = await queryChunk(s, mid, 0, maxRetries);
