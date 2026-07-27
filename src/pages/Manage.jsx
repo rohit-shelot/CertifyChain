@@ -5,9 +5,10 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardTitle, InputField, PrimaryButton, Badge, Spinner, EmptyState } from "../components/UI";
 import { useContract } from "../hooks/useContract";
 import { useWallet } from "../context/WalletContext";
-import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
-import { shortenAddress, queryFilterChunked, getReadOnlyProvider } from "../utils/ethers";
+import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
+import { shortenAddress, queryFilterChunked, getReadOnlyProvider, getFriendlyErrorMessage } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
+import { loadCachedEvents, saveCachedEvents, clearCachedEvents } from "../utils/eventCache";
 import toast from "react-hot-toast";
 
 const ABI = [
@@ -393,69 +394,103 @@ const Manage = () => {
     }
   }, [account]);
 
+  /* Parse raw event logs into plain cert objects (for cache storage) */
+  const parseManageLogs = useCallback(async (logs, provider) => {
+    if (logs.length === 0) return [];
+    const certHashes  = logs.map((log) => log.args?.[0] || log.topics?.[1]);
+    const certDataMap = await batchVerifyCertificates(certHashes, provider);
+
+    return logs.map((log) => {
+      const hash = log.args?.[0] || log.topics?.[1];
+      let name = log.args?.[1] || log.args?.name || "";
+      let course = log.args?.[2] || log.args?.course || "";
+      let ipfsHash = "", rawDate = 0, isValid = false, isEdited = false;
+
+      const certData = certDataMap.get(hash);
+      if (certData) {
+        isValid = certData.isValid; isEdited = certData.isEdited;
+        name = certData.name || name; course = certData.course || course;
+        ipfsHash = certData.ipfsHash; rawDate = Number(certData.issueDate) * 1000;
+      }
+
+      if (!rawDate) {
+        const eventTs = log.args?.[4] || log.args?.timestamp;
+        rawDate = eventTs ? Number(eventTs) * 1000 : Date.now();
+      }
+
+      return {
+        hash, name, course, ipfsHash,
+        issuer: log.args?.[3] || log.args?.issuer || "",
+        date:   new Date(rawDate).toLocaleDateString("en-IN"),
+        rawDate,
+        txHash:    log.transactionHash,
+        valid:     isValid,
+        isEdited:  isEdited,
+      };
+    });
+  }, []);
+
   /* Load MY certificates (filter by issuer = account) */
-  const loadCerts = useCallback(async () => {
+  const loadCerts = useCallback(async (forceRefresh = false) => {
     if (!account) return;
     setLoadingCerts(true);
     try {
-      const provider  = getReadOnlyProvider();
-      const contract  = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
-      const fromBlock = CONTRACT_DEPLOYMENT_BLOCK;
+      const provider = getReadOnlyProvider();
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
 
-      /* Fetch certificates issued by this account */
+      // Cache key is per-account so switching wallets gets fresh data
+      const cacheKey = `myissued_${account.toLowerCase()}`;
+      if (forceRefresh) clearCachedEvents(cacheKey);
+
+      const cached = loadCachedEvents(cacheKey);
+      const currentBlock = await provider.getBlockNumber();
       const filter = contract.filters.CertificateIssued(null, null, null, account);
-      const logs   = await queryFilterChunked(contract, filter, fromBlock, "latest", provider);
+
+      if (cached) {
+        // Render cached data instantly
+        const cachedParsed = cached.events;
+        const map = new Map();
+        cachedParsed.forEach((c) => map.set(c.hash, c));
+        setCerts([...map.values()].reverse());
+        setLoadingCerts(false);
+
+        // Background: fetch only new blocks
+        if (currentBlock <= cached.lastBlock) return;
+        const newLogs = await queryFilterChunked(contract, filter, cached.lastBlock + 1, currentBlock, provider);
+
+        if (newLogs.length === 0) {
+          saveCachedEvents(cacheKey, currentBlock, cachedParsed);
+          return;
+        }
+
+        const newParsed = await parseManageLogs(newLogs, provider);
+        const merged = [...cachedParsed, ...newParsed];
+        const mergedMap = new Map();
+        merged.forEach((c) => mergedMap.set(c.hash, c));
+        const final = [...mergedMap.values()];
+        saveCachedEvents(cacheKey, currentBlock, final);
+        setCerts([...final].reverse());
+        return;
+      }
+
+      // First visit: full fetch
+      const logs = await queryFilterChunked(contract, filter, CONTRACT_DEPLOYMENT_BLOCK, currentBlock, provider);
 
       if (logs.length === 0) {
+        saveCachedEvents(cacheKey, currentBlock, []);
         setCerts([]);
         setLoadingCerts(false);
         return;
       }
 
-      // Batch all verifyCertificate calls via Multicall3
-      const certHashes = logs.map((log) => log.args?.[0] || log.topics?.[1]);
-      const certDataMap = await batchVerifyCertificates(certHashes, provider);
-
-      const parsed = logs.map((log) => {
-        const hash = log.args?.[0] || log.topics?.[1];
-        let name = log.args?.[1] || log.args?.name || "";
-        let course = log.args?.[2] || log.args?.course || "";
-        let ipfsHash = "";
-        let rawDate = 0;
-        let isValid = false;
-        let isEdited = false;
-
-        const certData = certDataMap.get(hash);
-        if (certData) {
-          isValid = certData.isValid;
-          isEdited = certData.isEdited;
-          name = certData.name || name;
-          course = certData.course || course;
-          ipfsHash = certData.ipfsHash;
-          rawDate = Number(certData.issueDate) * 1000;
-        }
-
-        if (!rawDate) {
-          const eventTs = log.args?.[4] || log.args?.timestamp;
-          rawDate = eventTs ? Number(eventTs) * 1000 : Date.now();
-        }
-
-        return {
-          hash, name, course, ipfsHash,
-          issuer: log.args?.[3] || log.args?.issuer || "",
-          date: new Date(rawDate).toLocaleDateString("en-IN"),
-          rawDate,
-          txHash: log.transactionHash,
-          valid: isValid,
-          isEdited: isEdited,
-        };
-      });
-
+      const parsed = await parseManageLogs(logs, provider);
       const map = new Map();
       parsed.forEach((c) => map.set(c.hash, c));
-      setCerts([...map.values()].reverse());
+      const final = [...map.values()];
+      saveCachedEvents(cacheKey, currentBlock, final);
+      setCerts([...final].reverse());
     } catch (err) {
-      toast.error("Failed to load certificates: " + err.message);
+      toast.error(getFriendlyErrorMessage(err, "Failed to load certificates"));
     } finally { setLoadingCerts(false); }
   }, [account]);
 
@@ -497,7 +532,7 @@ const Manage = () => {
       setEditingCert(null);
       await loadCerts();
     } catch (err) {
-      console.error(err);
+      console.error("Edit save failed:", (err?.message || "").replace(/https?:\/\/[^\s"'`]+/g, "[RPC_ENDPOINT]"));
     } finally {
       setSavingEdit(false);
     }

@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
 import { Card, Spinner, EmptyState, Badge } from "../components/UI";
-import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
+import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
 import { shortenAddress, queryFilterChunked, getReadOnlyProvider, getFriendlyErrorMessage } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
+import { loadCachedEvents, saveCachedEvents, clearCachedEvents } from "../utils/eventCache";
 import { useWallet } from "../context/WalletContext";
 import { useContract } from "../hooks/useContract";
 import toast from "react-hot-toast";
@@ -97,91 +98,134 @@ const Certificates = () => {
     verifyOwner();
   }, [account, checkOwner]);
 
-  // ── Load certs (only when registered) ───────────────────────────────────────
-  const loadCerts = useCallback(async () => {
+  // ── Parse raw event logs into cert objects ──────────────────────────────────
+  const parseLogs = useCallback(async (logs, provider) => {
+    if (logs.length === 0) return [];
+    const certHashes  = logs.map((log) => log.args?.[0] || log.topics?.[1]);
+    const certDataMap = await batchVerifyCertificates(certHashes, provider);
+
+    const parsed = logs.map((log) => {
+      const hash = log.args?.[0] || log.topics?.[1];
+      let name     = log.args?.[1] || log.args?.name   || "";
+      let course   = log.args?.[2] || log.args?.course || "";
+      let ipfsHash = "", issueDate = null, isValid = false, isEdited = false;
+
+      const certData = certDataMap.get(hash);
+      if (certData) {
+        isValid = certData.isValid; isEdited = certData.isEdited;
+        name = certData.name || name; course = certData.course || course;
+        ipfsHash = certData.ipfsHash; issueDate = certData.issueDate;
+      }
+
+      let certId = null;
+      if (course && course.includes(" | ID: ")) {
+        const parts = course.split(" | ID: ");
+        course = parts[0]; certId = parts[1];
+      }
+
+      const eventTs = log.args?.[4] || log.args?.timestamp;
+      const ts = issueDate ? Number(issueDate) * 1000
+               : eventTs   ? Number(eventTs) * 1000
+               : Date.now();
+
+      return {
+        hash, name, course, ipfsHash, certId,
+        issuer:      log.args?.[3] || log.args?.issuer || "",
+        date:        new Date(ts).toLocaleDateString("en-IN"),
+        dateRaw:     ts,
+        txHash:      log.transactionHash,
+        blockNumber: log.blockNumber,
+        valid:       isValid,
+        isEdited:    isEdited,
+      };
+    });
+    return parsed;
+  }, []);
+
+  // ── Load certs with cache-first strategy ────────────────────────────────────
+  const CACHE_KEY = "certissued_all";
+
+  const loadCerts = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     try {
-      const provider  = getReadOnlyProvider();
-      const contract  = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
-      const fromBlock = CONTRACT_DEPLOYMENT_BLOCK;
+      const provider = getReadOnlyProvider();
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
 
-      // Fetch all CertificateIssued events from the blockchain
+      if (forceRefresh) clearCachedEvents(CACHE_KEY);
+
+      const cached = loadCachedEvents(CACHE_KEY);
+
+      // ── If we have a valid cache, show it instantly then fetch only new blocks ──
+      if (cached) {
+        // Render cached data immediately
+        const cachedParsed = cached.events;
+        const map = new Map();
+        cachedParsed.forEach((c) => map.set(c.hash, c));
+        setCerts([...map.values()].reverse());
+        setLoading(false);
+
+        // Background: fetch only new blocks since last scan
+        const currentBlock = await provider.getBlockNumber();
+        if (currentBlock <= cached.lastBlock) return; // nothing new
+
+        const newLogs = await queryFilterChunked(
+          contract,
+          contract.filters.CertificateIssued(),
+          cached.lastBlock + 1,
+          currentBlock,
+          provider
+        );
+
+        if (newLogs.length === 0) {
+          // Update lastBlock even if no new events
+          saveCachedEvents(CACHE_KEY, currentBlock, cachedParsed);
+          return;
+        }
+
+        const newParsed = await parseLogs(newLogs, provider);
+        const merged = [...cachedParsed, ...newParsed];
+        const mergedMap = new Map();
+        merged.forEach((c) => mergedMap.set(c.hash, c));
+        const final = [...mergedMap.values()];
+
+        saveCachedEvents(CACHE_KEY, currentBlock, final);
+        setCerts([...final].reverse());
+        return;
+      }
+
+      // ── First visit: full fetch from deployment block ──────────────────────
+      const currentBlock = await provider.getBlockNumber();
       const logs = await queryFilterChunked(
         contract,
         contract.filters.CertificateIssued(),
-        fromBlock,
-        "latest",
+        CONTRACT_DEPLOYMENT_BLOCK,
+        currentBlock,
         provider
       );
 
       if (logs.length === 0) {
+        saveCachedEvents(CACHE_KEY, currentBlock, []);
         setCerts([]);
         setLoading(false);
         return;
       }
 
-      // Batch all verifyCertificate calls into a single Multicall3 RPC request
-      const certHashes = logs.map((log) => log.args?.[0] || log.topics?.[1]);
-      const certDataMap = await batchVerifyCertificates(certHashes, provider);
-
-      const parsed = logs.map((log) => {
-        const hash = log.args?.[0] || log.topics?.[1];
-        let name      = log.args?.[1] || log.args?.name || "";
-        let course    = log.args?.[2] || log.args?.course || "";
-        let ipfsHash  = "";
-        let issueDate = null;
-        let isValid   = false;
-        let isEdited  = false;
-
-        const certData = certDataMap.get(hash);
-        if (certData) {
-          isValid   = certData.isValid;
-          isEdited  = certData.isEdited;
-          name      = certData.name || name;
-          course    = certData.course || course;
-          ipfsHash  = certData.ipfsHash;
-          issueDate = certData.issueDate;
-        }
-
-        let certId = null;
-        if (course && course.includes(" | ID: ")) {
-          const parts = course.split(" | ID: ");
-          course = parts[0];
-          certId = parts[1];
-        }
-
-        const eventTs = log.args?.[4] || log.args?.timestamp;
-        const ts = issueDate
-          ? Number(issueDate) * 1000
-          : eventTs
-          ? Number(eventTs) * 1000
-          : Date.now();
-
-        return {
-          hash,
-          name, course, ipfsHash, certId,
-          issuer:      log.args?.[3] || log.args?.issuer || "",
-          date:        new Date(ts).toLocaleDateString("en-IN"),
-          dateRaw:     ts,
-          txHash:      log.transactionHash,
-          blockNumber: log.blockNumber,
-          valid:       isValid,
-          isEdited:    isEdited,
-        };
-      });
-
+      const parsed = await parseLogs(logs, provider);
       const map = new Map();
       parsed.forEach((c) => map.set(c.hash, c));
-      setCerts([...map.values()].reverse());
+      const final = [...map.values()];
+
+      saveCachedEvents(CACHE_KEY, currentBlock, final);
+      setCerts([...final].reverse());
     } catch (err) {
       toast.error(getFriendlyErrorMessage(err, "Failed to load certificates"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [parseLogs]);
 
   useEffect(() => {
-    if (isOwner) loadCerts();
+    if (isOwner) loadCerts(false);
   }, [isOwner, loadCerts]);
 
   const filtered = certs.filter((c) => {
@@ -282,7 +326,7 @@ const Certificates = () => {
           <option value="valid">Valid Only</option>
           <option value="revoked">Revoked Only</option>
         </select>
-        <button style={styles.refreshBtn} onClick={loadCerts}>↻ Refresh</button>
+        <button style={styles.refreshBtn} onClick={() => loadCerts(true)}>↻ Refresh</button>
       </div>
 
       {loading ? (

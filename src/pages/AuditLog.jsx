@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { Card, CardTitle, Badge, Spinner, EmptyState } from "../components/UI";
-import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK, SEPOLIA_RPC } from "../utils/contractConfig";
+import { CONTRACT_ADDRESS, CONTRACT_DEPLOYMENT_BLOCK } from "../utils/contractConfig";
 import { formatTimestamp, shortenAddress, queryFilterChunked, getReadOnlyProvider, getFriendlyErrorMessage } from "../utils/ethers";
 import { batchVerifyCertificates, batchGetBlocks } from "../utils/multicall";
+import { loadCachedEvents, saveCachedEvents, clearCachedEvents } from "../utils/eventCache";
 import { useWallet } from "../context/WalletContext";
 import { useContract } from "../hooks/useContract";
 
@@ -86,48 +87,90 @@ const AuditLog = () => {
     checkRegistration();
   }, [account, checkIssuer]);
 
-  const fetchEvents = useCallback(async () => {
+  const CACHE_ISSUED  = "auditlog_issued";
+  const CACHE_REVOKED = "auditlog_revoked";
+
+  const fetchEvents = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     try {
-      const provider   = getReadOnlyProvider();
-      const contract   = new ethers.Contract(CONTRACT_ADDRESS, ABI_WITH_EVENTS, provider);
-      const fromBlock  = CONTRACT_DEPLOYMENT_BLOCK;
+      const provider  = getReadOnlyProvider();
+      const contract  = new ethers.Contract(CONTRACT_ADDRESS, ABI_WITH_EVENTS, provider);
 
-      // Fetch event types SEQUENTIALLY to avoid doubling RPC pressure on free-tier nodes
-      const issuedLogs  = await queryFilterChunked(contract, contract.filters.CertificateIssued(),  fromBlock, "latest", provider);
-      const revokedLogs = await queryFilterChunked(contract, contract.filters.CertificateRevoked(), fromBlock, "latest", provider);
+      if (forceRefresh) {
+        clearCachedEvents(CACHE_ISSUED);
+        clearCachedEvents(CACHE_REVOKED);
+      }
 
-      const issued = issuedLogs.map((log) => {
+      const cachedIssued  = loadCachedEvents(CACHE_ISSUED);
+      const cachedRevoked = loadCachedEvents(CACHE_REVOKED);
+      const currentBlock  = await provider.getBlockNumber();
+
+      // ── Helper: fetch a filter from fromBlock to currentBlock ────────────
+      const fetchFrom = (filter, fromBlock) =>
+        queryFilterChunked(contract, filter, fromBlock, currentBlock, provider);
+
+      let issuedLogs, revokedLogs;
+      let issuedEvents  = [];
+      let revokedEvents = [];
+      let didShowCached = false;
+
+      // ── Issued: serve cache then background-update ────────────────────
+      if (cachedIssued) {
+        issuedEvents = cachedIssued.events;
+        didShowCached = true;
+        issuedLogs   = currentBlock > cachedIssued.lastBlock
+          ? await fetchFrom(contract.filters.CertificateIssued(), cachedIssued.lastBlock + 1)
+          : [];
+      } else {
+        issuedLogs = await fetchFrom(contract.filters.CertificateIssued(), CONTRACT_DEPLOYMENT_BLOCK);
+      }
+
+      // ── Revoked: serve cache then background-update ──────────────────
+      if (cachedRevoked) {
+        revokedEvents = cachedRevoked.events;
+        revokedLogs   = currentBlock > cachedRevoked.lastBlock
+          ? await fetchFrom(contract.filters.CertificateRevoked(), cachedRevoked.lastBlock + 1)
+          : [];
+      } else {
+        revokedLogs = await fetchFrom(contract.filters.CertificateRevoked(), CONTRACT_DEPLOYMENT_BLOCK);
+      }
+
+      // If we already had cached data, show it now (fast path)
+      if (didShowCached && issuedLogs.length === 0 && revokedLogs.length === 0) {
+        saveCachedEvents(CACHE_ISSUED,  currentBlock, issuedEvents);
+        saveCachedEvents(CACHE_REVOKED, currentBlock, revokedEvents);
+        setEvents([...issuedEvents, ...revokedEvents].sort((a, b) => b.blockNum - a.blockNum));
+        return;
+      }
+
+      // ── Parse newly fetched logs ──────────────────────────────────
+      const newIssued = issuedLogs.map((log) => {
         const ts = log.args?.[4] || log.args?.timestamp;
         return {
-          type:      "issue",
-          title:     "Certificate Issued",
+          type: "issue", title: "Certificate Issued",
           certHash:  log.args?.[0] || log.topics?.[1],
-          name:      log.args?.[1] || log.args?.name || "",
-          course:    log.args?.[2] || log.args?.course || "",
-          issuer:    log.args?.[3] || log.args?.issuer || "",
+          name:      log.args?.[1] || log.args?.name   || "",
+          course:    log.args?.[2] || log.args?.course  || "",
+          issuer:    log.args?.[3] || log.args?.issuer  || "",
           timestamp: ts ? Number(ts) * 1000 : Date.now(),
           txHash:    log.transactionHash,
           blockNum:  log.blockNumber,
         };
       });
 
-      // For revoked events, batch verifyCertificate calls via Multicall3
-      let revoked = [];
+      let newRevoked = [];
       if (revokedLogs.length > 0) {
         const revokedHashes = revokedLogs.map((l) => l.args?.[0] || l.topics?.[1]);
         const certDataMap = await batchVerifyCertificates(revokedHashes, provider);
-
-        revoked = revokedLogs.map((log) => {
+        newRevoked = revokedLogs.map((log) => {
           const hash = log.args?.[0] || log.topics?.[1];
           const certData = certDataMap.get(hash);
           const ts = log.args?.[2] || log.args?.timestamp || (certData?.issueDate ? Number(certData.issueDate) : null);
           return {
-            type:      "revoke",
-            title:     "Certificate Revoked",
+            type: "revoke", title: "Certificate Revoked",
             certHash:  hash,
-            name:      certData?.name || "—",
+            name:      certData?.name   || "—",
             course:    certData?.course || "—",
             revokedBy: log.args?.[1] || log.args?.revokedBy || "",
             timestamp: ts ? Number(ts) * 1000 : Date.now(),
@@ -137,7 +180,14 @@ const AuditLog = () => {
         });
       }
 
-      setEvents([...issued, ...revoked].sort((a, b) => b.blockNum - a.blockNum));
+      // Merge with cached
+      const mergedIssued  = [...issuedEvents,  ...newIssued];
+      const mergedRevoked = [...revokedEvents, ...newRevoked];
+
+      saveCachedEvents(CACHE_ISSUED,  currentBlock, mergedIssued);
+      saveCachedEvents(CACHE_REVOKED, currentBlock, mergedRevoked);
+
+      setEvents([...mergedIssued, ...mergedRevoked].sort((a, b) => b.blockNum - a.blockNum));
     } catch (err) {
       setError(getFriendlyErrorMessage(err, "Failed to fetch audit log events"));
     } finally {
@@ -146,7 +196,7 @@ const AuditLog = () => {
   }, []);
 
   useEffect(() => {
-    if (registered) fetchEvents();
+    if (registered) fetchEvents(false);
   }, [registered, fetchEvents]);
 
   const displayed = filter === "all" ? events : events.filter((e) => e.type === filter);

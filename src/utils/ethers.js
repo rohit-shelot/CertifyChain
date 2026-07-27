@@ -153,7 +153,7 @@ export const rotateProvider = () => {
  *
  * Usage: await withProviderRetry(() => contract.owner())
  */
-export const withProviderRetry = async (fn, maxRetries = FALLBACK_URLS.length * 2) => {
+export const withProviderRetry = async (fn, maxRetries = 3) => {
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -398,8 +398,8 @@ export const queryFilterChunked = async (
     );
   };
 
-  // Query a single chunk; on failure wait + rotate, then retry (max `maxRetries` times)
-  const queryChunk = async (s, e, attempt = 0, maxRetries = FALLBACK_URLS.length * 2) => {
+  // Query a single chunk; on failure wait + rotate, then retry (max 3 attempts)
+  const queryChunk = async (s, e, attempt = 0, maxRetries = 3) => {
     try {
       const activeProvider = getReadOnlyProvider();
       const activeContract = contract.connect(activeProvider);

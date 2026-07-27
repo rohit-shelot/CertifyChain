@@ -14,6 +14,10 @@ import {
 import { uploadToIPFS } from "../utils/pinata";
 import { useWallet } from "../context/WalletContext";
 import { loadCachedEvents, saveCachedEvents } from "../utils/eventCache";
+const logErrorSafely = (context, err) => {
+  const cleanMsg = (err?.message || "").replace(/https?:\/\/[^\s"'`]+/g, "[RPC_ENDPOINT]");
+  console.error(`${context}:`, cleanMsg);
+};
 
 export const useContract = () => {
   const { account } = useWallet();
@@ -78,7 +82,7 @@ export const useContract = () => {
       };
 
     } catch (err) {
-      console.error("ISSUE ERROR:", err);
+      logErrorSafely("ISSUE ERROR", err);
       toast.error("Transaction failed: " + (err.reason || err.message), { id: toastId });
       throw err;
     }
@@ -88,9 +92,10 @@ export const useContract = () => {
     const toastId = toast.loading("Verifying on blockchain...");
 
     try {
-      const contract = getReadOnlyContract();
-
-      const data = await withProviderRetry(() => contract.verifyCertificate(certHash));
+      const data = await withProviderRetry((p) => {
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, p);
+        return contract.verifyCertificate(certHash);
+      });
 
       const name      = data[0];
       const course    = data[1];
@@ -114,7 +119,7 @@ export const useContract = () => {
       return { found: true, name, course, ipfsHash, issueDate, issuer, isValid, isEdited };
 
     } catch (err) {
-      console.error("VERIFY ERROR:", err);
+      logErrorSafely("VERIFY ERROR", err);
       toast.error("Certificate not found or invalid hash", { id: toastId });
       throw err;
     }
@@ -171,7 +176,7 @@ export const useContract = () => {
       };
 
     } catch (err) {
-      console.error("EDIT ERROR:", err);
+      logErrorSafely("EDIT ERROR", err);
       toast.error("Edit failed: " + (err.reason || err.message), { id: toastId });
       throw err;
     }
@@ -197,43 +202,44 @@ export const useContract = () => {
       throw err;
     }
   }, [account]);
-
   const checkIssuer = useCallback(async (address) => {
     try {
-      const contract = getReadOnlyContract();
+      const result = await withProviderRetry((p) => {
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, p);
+        return contract.authorizedIssuers(address);
+      });
 
-      const result = await withProviderRetry(() => contract.authorizedIssuers(address));
-
-      console.log("CHECK →", address, result);
 
       return result;
 
     } catch (err) {
-      console.error("CHECK ERROR:", err);
+      logErrorSafely("CHECK ERROR", err);
       return false;
     }
   }, []);
 
   const checkOwner = useCallback(async (address) => {
     try {
-      const contract = getReadOnlyContract();
+      const ownerAddr = await withProviderRetry((p) => {
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, p);
+        return contract.owner();
+      });
 
-      const ownerAddr = await withProviderRetry(() => contract.owner());
-
-      console.log("OWNER CHECK →", address, ownerAddr);
 
       return ownerAddr.toLowerCase() === address.toLowerCase();
 
     } catch (err) {
-      console.error("OWNER CHECK ERROR:", err);
+      logErrorSafely("OWNER CHECK ERROR", err);
       return false;
     }
   }, []);
 
   const checkExists = useCallback(async (certHash) => {
     try {
-      const contract = getReadOnlyContract();
-      const data = await withProviderRetry(() => contract.verifyCertificate(certHash));
+      const data = await withProviderRetry((p) => {
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, p);
+        return contract.verifyCertificate(certHash);
+      });
       return (data[0] && data[0] !== "");
     } catch (err) {
       return false;
@@ -277,7 +283,7 @@ export const useContract = () => {
       }
       return false;
     } catch (err) {
-      console.error("Error checking events:", err);
+      logErrorSafely("Error checking events", err);
       return false;
     }
   }, []);
@@ -295,7 +301,7 @@ export const useContract = () => {
       }
       return `CERT-${maxNum + 1}`;
     } catch (err) {
-      console.error("getNextCertId error:", err);
+      logErrorSafely("getNextCertId error", err);
       return `CERT-1`;
     }
   }, []);
