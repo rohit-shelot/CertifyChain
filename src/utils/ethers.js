@@ -10,18 +10,51 @@ let _cachedProvider = null;
 let _cachedProviderIndex = 0;
 
 const FALLBACK_URLS = [
-  SEPOLIA_RPC, // Primary from .env (e.g. Infura/Alchemy — best for archive)
-  "https://sepolia.gateway.tenderly.co",
   "https://rpc.sepolia.ethpandaops.io",
+  "https://sepolia.gateway.tenderly.co",
+  "https://eth-sepolia.public.blastapi.io",
   "https://rpc2.sepolia.org",
+  SEPOLIA_RPC, // Primary from .env (e.g. Infura)
   "https://rpc.ankr.com/eth_sepolia",
-  // NOTE: publicnode requires a personal token for archive data (returns 403)
-  // NOTE: 1rpc.io only allows 50-block ranges per eth_getLogs request
   "https://ethereum-sepolia-rpc.publicnode.com",
   "https://1rpc.io/sepolia",
-].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i); // unique, SEPOLIA_RPC first
+].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i); // unique
 
 const _failedRpcCooldowns = new Map();
+const COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes persistent cooldown
+
+const setRpcCooldown = (url) => {
+  if (!url) return;
+  _failedRpcCooldowns.set(url, Date.now() + COOLDOWN_MS);
+  try {
+    sessionStorage.setItem("cc_rpc_cd_" + url, String(Date.now() + COOLDOWN_MS));
+  } catch (_) {}
+};
+
+const isRpcInCooldown = (url) => {
+  if (!url) return false;
+  const memExpiry = _failedRpcCooldowns.get(url) || 0;
+  if (Date.now() < memExpiry) return true;
+  try {
+    const ssExpiry = Number(sessionStorage.getItem("cc_rpc_cd_" + url) || 0);
+    if (Date.now() < ssExpiry) {
+      _failedRpcCooldowns.set(url, ssExpiry);
+      return true;
+    }
+  } catch (_) {}
+  return false;
+};
+
+const getFirstAvailableIndex = () => {
+  for (let i = 0; i < FALLBACK_URLS.length; i++) {
+    if (!isRpcInCooldown(FALLBACK_URLS[i])) {
+      return i;
+    }
+  }
+  // If all are in cooldown, reset memory cooldowns and return 0
+  _failedRpcCooldowns.clear();
+  return 0;
+};
 
 export const isRateLimit = (err) => {
   if (!err) return false;
@@ -99,6 +132,7 @@ export const getFriendlyErrorMessage = (err, fallbackMsg = "Failed to load data 
 
 export const getReadOnlyProvider = () => {
   if (_cachedProvider) return _cachedProvider;
+  _cachedProviderIndex = getFirstAvailableIndex();
   _cachedProvider = new ethers.JsonRpcProvider(
     FALLBACK_URLS[_cachedProviderIndex],
     11155111,
@@ -111,7 +145,7 @@ export const getReadOnlyProvider = () => {
 export const rotateProvider = () => {
   const currentUrl = FALLBACK_URLS[_cachedProviderIndex];
   if (currentUrl) {
-    _failedRpcCooldowns.set(currentUrl, Date.now() + 60000);
+    setRpcCooldown(currentUrl);
   }
 
   // IMPORTANT: destroy the old provider before replacing it.
@@ -120,22 +154,7 @@ export const rotateProvider = () => {
   try { _cachedProvider?.destroy(); } catch (_) {}
   _cachedProvider = null;
 
-  let nextIdx = (_cachedProviderIndex + 1) % FALLBACK_URLS.length;
-  let attempts = 0;
-  while (attempts < FALLBACK_URLS.length) {
-    const candidateUrl = FALLBACK_URLS[nextIdx];
-    const expiry = _failedRpcCooldowns.get(candidateUrl) || 0;
-    if (Date.now() > expiry) {
-      _cachedProviderIndex = nextIdx;
-      break;
-    }
-    nextIdx = (nextIdx + 1) % FALLBACK_URLS.length;
-    attempts++;
-  }
-
-  if (attempts >= FALLBACK_URLS.length) {
-    _cachedProviderIndex = (_cachedProviderIndex + 1) % FALLBACK_URLS.length;
-  }
+  _cachedProviderIndex = getFirstAvailableIndex();
 
   _cachedProvider = new ethers.JsonRpcProvider(
     FALLBACK_URLS[_cachedProviderIndex],
