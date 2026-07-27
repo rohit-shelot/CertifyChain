@@ -13,7 +13,7 @@
  */
 
 const PREFIX    = "cc_events_";
-const MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_AGE_MS = 60 * 60 * 1000; // 60 minutes — blockchain events don't change retroactively
 
 /**
  * Load cached events for a given key.

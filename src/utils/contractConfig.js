@@ -403,5 +403,7 @@ export const IPFS_GATEWAY    = "https://gateway.pinata.cloud/ipfs/";
 // Must be prefixed VITE_ in your .env file: VITE_PINATA_JWT=your_token
 export const PINATA_JWT = import.meta.env.VITE_PINATA_JWT;
 
-export const CONTRACT_DEPLOYMENT_BLOCK = 10870000;
+// Actual block of the first on-chain event — confirmed via getLogs scan.
+// Updating this from the original 10870000 cuts ~17500 dead blocks from every initial scan.
+export const CONTRACT_DEPLOYMENT_BLOCK = 10887400;
 export const SEPOLIA_RPC = import.meta.env.VITE_SEPOLIA_RPC || "https://ethereum-sepolia-rpc.publicnode.com";
