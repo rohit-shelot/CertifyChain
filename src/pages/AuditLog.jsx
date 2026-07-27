@@ -94,11 +94,9 @@ const AuditLog = () => {
       const contract   = new ethers.Contract(CONTRACT_ADDRESS, ABI_WITH_EVENTS, provider);
       const fromBlock  = CONTRACT_DEPLOYMENT_BLOCK;
 
-      // Fetch both event types from the blockchain
-      const [issuedLogs, revokedLogs] = await Promise.all([
-        queryFilterChunked(contract, contract.filters.CertificateIssued(), fromBlock, "latest", provider),
-        queryFilterChunked(contract, contract.filters.CertificateRevoked(), fromBlock, "latest", provider),
-      ]);
+      // Fetch event types SEQUENTIALLY to avoid doubling RPC pressure on free-tier nodes
+      const issuedLogs  = await queryFilterChunked(contract, contract.filters.CertificateIssued(),  fromBlock, "latest", provider);
+      const revokedLogs = await queryFilterChunked(contract, contract.filters.CertificateRevoked(), fromBlock, "latest", provider);
 
       const issued = issuedLogs.map((log) => {
         const ts = log.args?.[4] || log.args?.timestamp;

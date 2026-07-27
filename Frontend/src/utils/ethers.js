@@ -10,14 +10,16 @@ let _cachedProvider = null;
 let _cachedProviderIndex = 0;
 
 const FALLBACK_URLS = [
-  "https://ethereum-sepolia-rpc.publicnode.com",
-  "https://rpc.ankr.com/eth_sepolia",
-  "https://1rpc.io/sepolia",
-  SEPOLIA_RPC, // Primary from .env
+  SEPOLIA_RPC, // Primary from .env (e.g. Infura/Alchemy — best for archive)
   "https://sepolia.gateway.tenderly.co",
   "https://rpc.sepolia.ethpandaops.io",
   "https://rpc2.sepolia.org",
-].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i); // unique
+  "https://rpc.ankr.com/eth_sepolia",
+  // NOTE: publicnode requires a personal token for archive data (returns 403)
+  // NOTE: 1rpc.io only allows 50-block ranges per eth_getLogs request
+  "https://ethereum-sepolia-rpc.publicnode.com",
+  "https://1rpc.io/sepolia",
+].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i); // unique, SEPOLIA_RPC first
 
 const _failedRpcCooldowns = new Map();
 
@@ -39,11 +41,16 @@ export const isRateLimit = (err) => {
   const body = (info?.responseBody || "").toLowerCase();
   if (body.includes("too many requests") || body.includes("429") || body.includes("-32005")) return true;
 
+  // Treat 403 / archive-requires-token as a provider rotation trigger
+  const status = (info?.responseStatus || "").trim();
+  if (status === "403" || msg.includes("403") || msg.includes("forbidden")) return true;
+  if (body.includes("personal token") || body.includes("archive") || body.includes("unauthorized")) return true;
+
   if (Array.isArray(err?.value)) {
     return err.value.some((v) => {
       const vCode = v?.code || v?.error?.code;
       const vMsg = (v?.message || v?.error?.message || "").toLowerCase();
-      return vCode === -32005 || vMsg.includes("too many") || vMsg.includes("429");
+      return vCode === -32005 || vMsg.includes("too many") || vMsg.includes("429") || vMsg.includes("unauthorized");
     });
   }
   return false;
@@ -129,7 +136,8 @@ export const rotateProvider = () => {
     11155111,
     { staticNetwork: true }
   );
-  console.info(`[RPC] Rotated to provider index ${_cachedProviderIndex} (${FALLBACK_URLS[_cachedProviderIndex]})`);
+  // URL intentionally omitted from logs to keep RPC credentials private
+  console.info(`[RPC] Rotated to provider index ${_cachedProviderIndex}`);
   return _cachedProvider;
 };
 
@@ -147,8 +155,9 @@ export const withProviderRetry = async (fn, maxRetries = FALLBACK_URLS.length * 
     } catch (err) {
       lastErr = err;
       const rateLimit = isRateLimit(err);
-      const cleanMsg = (err?.message || "").replace(/https?:\/\/[^\s"'`]+/g, "[RPC_ENDPOINT]");
-      console.warn(`[RPC] Call failed (attempt ${attempt + 1}, ${rateLimit ? "rate-limited" : "error"}), rotating provider:`, cleanMsg);
+      // Strip any URL from the message before logging (keeps RPC endpoint private)
+      const cleanMsg = (err?.message || "").replace(/https?:\/\/[^\s"'`]+/g, "[hidden]");
+      console.warn(`[RPC] provider ${_cachedProviderIndex} failed (attempt ${attempt + 1}, ${rateLimit ? "rate-limited" : "error"}):`, cleanMsg);
       rotateProvider();
       if (rateLimit) {
         const waitMs = Math.min(300 * Math.pow(2, attempt), 2000);
@@ -345,7 +354,7 @@ export const queryFilterChunked = async (
     try {
       endBlock = await withProviderRetry((p) => p.getBlockNumber());
     } catch (err) {
-      const cleanMsg = (err?.message || "").replace(/https?:\/\/[^\s"'`]+/g, "[RPC_ENDPOINT]");
+      const cleanMsg = (err?.message || "").replace(/https?:\/\/[^\s"'`]+/g, "[hidden]");
       console.warn("[queryFilterChunked] getBlockNumber failed, returning empty:", cleanMsg);
       return [];
     }
@@ -400,7 +409,7 @@ export const queryFilterChunked = async (
       // Exponential backoff: 1s, 2s, 4s … capped at 10s; plain errors get 300ms
       const waitMs = rl ? Math.min(1000 * 2 ** attempt, 10000) : 300;
 
-      const cleanMsg = (err?.message || "").replace(/https?:\/\/[^\s"'`]+/g, "[RPC_ENDPOINT]");
+      const cleanMsg = (err?.message || "").replace(/https?:\/\/[^\s"'`]+/g, "[hidden]");
       console.warn(
         `[queryFilterChunked] chunk [${s}-${e}] failed (attempt ${attempt + 1}, ${
           rl ? "rate-limited" : "error"
