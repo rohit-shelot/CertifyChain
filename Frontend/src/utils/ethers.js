@@ -371,10 +371,11 @@ export const queryFilterChunked = async (
   fromBlock,
   toBlock,
   provider,
-  // 9999 stays just under Infura's 10 000-block eth_getLogs limit, preventing
-  // recursive binary splitting which would cascade into dozens of requests.
-  chunkSize = 9999,
-  delayMs = 600   // generous pause between chunks to stay under per-second rate limits
+  // 29000 stays safely under ethpandaops' 30 000-block limit and Infura's 10k limit
+  // triggers the binary-split fallback for smaller-limit RPCs. This means ~17 chunks
+  // instead of ~49 with 9999, cutting initial load time by ~60%.
+  chunkSize = 29000,
+  delayMs = 100  // minimal delay — cache prevents repeat full-scans on revisits
 ) => {
   let endBlock = toBlock;
   if (toBlock === "latest" || typeof toBlock === "string") {
